@@ -20,6 +20,7 @@ class CameraService {
   String? _errorMessage;
   bool _isPermissionDenied = false;
   int _selectedCameraIndex = 0;
+  static const String _takesFolderName = 'teleprompter_videos';
   RecordingFormat _format = RecordingFormat.forQuality(RecordingQuality.fullHd1080);
 
   bool get isInitialized => _isInitialized && _controller != null && _controller!.value.isInitialized;
@@ -159,26 +160,46 @@ class CameraService {
     }
   }
 
-  /// Stop video recording and persist file
-  Future<File?> stopRecording() async {
+  /// Stops recording and moves the take into the app's videos folder as [fileName].
+  Future<File?> stopRecording({required String fileName}) async {
     if (!_isRecording) return null;
     _isRecording = false;
     if (!isInitialized) return null;
 
     try {
-      final cam.XFile xFile = await _controller!.stopVideoRecording();
-      final dir = await getApplicationDocumentsDirectory();
-      final videosDir = Directory('${dir.path}/teleprompter_videos');
-      if (!await videosDir.exists()) {
-        await videosDir.create(recursive: true);
-      }
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final targetPath = '${videosDir.path}/take_$timestamp.mp4';
-      final savedFile = await File(xFile.path).copy(targetPath);
-      return savedFile;
+      final recorded = await _controller!.stopVideoRecording();
+      final target = await _uniqueTakePath(fileName);
+      return await _moveFile(File(recorded.path), target);
     } catch (e) {
       debugPrint('Error stopping video recording: $e');
       return null;
+    }
+  }
+
+  /// Path in the takes folder for [fileName], numbered "(2)", "(3)"… if taken.
+  Future<String> _uniqueTakePath(String fileName) async {
+    final documents = await getApplicationDocumentsDirectory();
+    final videosDir = Directory('${documents.path}/$_takesFolderName');
+    if (!await videosDir.exists()) await videosDir.create(recursive: true);
+
+    final dot = fileName.lastIndexOf('.');
+    final stem = dot < 0 ? fileName : fileName.substring(0, dot);
+    final extension = dot < 0 ? '' : fileName.substring(dot);
+    var candidate = '${videosDir.path}/$fileName';
+    for (var copy = 2; await File(candidate).exists(); copy++) {
+      candidate = '${videosDir.path}/$stem ($copy)$extension';
+    }
+    return candidate;
+  }
+
+  /// Renames when possible (no second copy on disk); copies and deletes across volumes.
+  static Future<File> _moveFile(File source, String targetPath) async {
+    try {
+      return await source.rename(targetPath);
+    } on FileSystemException {
+      final copied = await source.copy(targetPath);
+      await source.delete();
+      return copied;
     }
   }
 

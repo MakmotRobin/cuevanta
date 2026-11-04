@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/script.dart';
 import '../models/teleprompter_settings.dart';
 import '../models/recorded_video.dart';
+import '../models/take_library.dart';
 
 class StorageService {
   static const String _keyScripts = 'teleprompter_scripts_v1';
@@ -108,30 +109,48 @@ class StorageService {
     await _prefs?.setString(_keySettings, settings.toJson());
   }
 
-  /// Recordings history
+  /// Recorded takes, newest first. Takes saved before numbering existed are
+  /// numbered (and stored) the first time they are read.
   Future<List<RecordedVideo>> getRecordings() async {
     await init();
     final rawList = _prefs?.getStringList(_keyRecordings);
     if (rawList == null) return [];
+    final List<RecordedVideo> stored;
     try {
-      return rawList.map((str) => RecordedVideo.fromJson(str)).toList();
+      stored = rawList.map((str) => RecordedVideo.fromJson(str)).toList();
     } catch (_) {
       return [];
     }
+    final numbered = TakeLibrary.numberUnnumberedTakes(stored);
+    if (!identical(numbered, stored)) await _saveRecordings(numbered);
+    return numbered;
   }
+
+  Future<int> nextTakeNumber(String scriptId) async =>
+      TakeLibrary.nextTakeNumber(await getRecordings(), scriptId);
 
   Future<void> addRecording(RecordedVideo video) async {
     final list = await getRecordings();
     list.insert(0, video);
-    await init();
-    await _prefs?.setStringList(_keyRecordings, list.map((v) => v.toJson()).toList());
+    await _saveRecordings(list);
   }
 
   Future<void> deleteRecording(String id) async {
     final list = await getRecordings();
     list.removeWhere((v) => v.id == id);
+    await _saveRecordings(list);
+  }
+
+  /// Stars the take as its script's best (or unstars it); returns the updated list.
+  Future<List<RecordedVideo>> toggleBestTake(String id) async {
+    final updated = TakeLibrary.toggleBestTake(await getRecordings(), id);
+    await _saveRecordings(updated);
+    return updated;
+  }
+
+  Future<void> _saveRecordings(List<RecordedVideo> recordings) async {
     await init();
-    await _prefs?.setStringList(_keyRecordings, list.map((v) => v.toJson()).toList());
+    await _prefs?.setStringList(_keyRecordings, recordings.map((v) => v.toJson()).toList());
   }
 
   List<Script> _getDefaultScripts() {

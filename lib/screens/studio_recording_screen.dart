@@ -1,16 +1,17 @@
 import 'dart:async';
-import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../app_orientations.dart';
-import 'package:share_plus/share_plus.dart';
 import '../models/recorded_video.dart';
 import '../models/script.dart';
 import '../models/teleprompter_settings.dart';
 import '../services/camera_service.dart';
 import '../services/recording_format.dart';
 import '../services/storage_service.dart';
+import '../services/take_sharing.dart';
 import '../theme/app_theme.dart';
 import '../widgets/prompter_hud_controls.dart';
 import '../widgets/prompter_settings_sheet.dart';
@@ -21,10 +22,7 @@ import 'video_player_screen.dart';
 class StudioRecordingScreen extends StatefulWidget {
   final Script script;
 
-  const StudioRecordingScreen({
-    super.key,
-    required this.script,
-  });
+  const StudioRecordingScreen({super.key, required this.script});
 
   @override
   State<StudioRecordingScreen> createState() => _StudioRecordingScreenState();
@@ -44,6 +42,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   bool _isRecording = false;
   bool _isSavingTake = false;
   int _recordSeconds = 0;
+  DateTime? _takeStartedAt;
   Timer? _recordTimer;
 
   PrompterViewController? _prompterController;
@@ -80,7 +79,8 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     if (_isLoading) return;
     if (state == AppLifecycleState.inactive) {
       _releaseCameraForBackground();
-    } else if (state == AppLifecycleState.resumed && !_cameraService.isInitialized) {
+    } else if (state == AppLifecycleState.resumed &&
+        !_cameraService.isInitialized) {
       _reacquireCamera();
     }
   }
@@ -101,9 +101,9 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   Future<void> _openCamera() {
     _openedQuality = _settings.recordingQuality;
     return _cameraService.initialize(
-        preferFront: _settings.preferFrontCamera,
-        quality: _settings.recordingQuality,
-      );
+      preferFront: _settings.preferFrontCamera,
+      quality: _settings.recordingQuality,
+    );
   }
 
   Future<void> _reopenCameraForQuality(RecordingQuality quality) async {
@@ -139,6 +139,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     setState(() {
       _isRecording = true;
       _recordSeconds = 0;
+      _takeStartedAt = DateTime.now();
     });
     _recordTimer?.cancel();
     _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -154,7 +155,10 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
         SnackBar(
           content: Text('Not recording: $reason'),
           action: _cameraService.isPermissionDenied
-              ? SnackBarAction(label: 'Settings', onPressed: _cameraService.openPermissionSettings)
+              ? SnackBarAction(
+                  label: 'Settings',
+                  onPressed: _cameraService.openPermissionSettings,
+                )
               : null,
         ),
       );
@@ -169,17 +173,26 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
       _isSavingTake = true;
     });
 
-    final savedFile = await _cameraService.stopRecording();
+    final recordedAt = _takeStartedAt ?? DateTime.now();
+    final takeNumber = await _storageService.nextTakeNumber(widget.script.id);
+    final savedFile = await _cameraService.stopRecording(
+      fileName: takeFileName(
+        scriptTitle: widget.script.title,
+        takeNumber: takeNumber,
+        recordedAt: recordedAt,
+      ),
+    );
     RecordedVideo? video;
     if (savedFile != null) {
       video = RecordedVideo(
-        id: 'rec_${DateTime.now().millisecondsSinceEpoch}',
+        id: 'rec_${recordedAt.millisecondsSinceEpoch}',
         filePath: savedFile.path,
         scriptId: widget.script.id,
         scriptTitle: widget.script.title,
-        recordedAt: DateTime.now(),
+        recordedAt: recordedAt,
         durationSeconds: _recordSeconds,
         fileSizeBytes: await savedFile.length(),
+        takeNumber: takeNumber,
       );
       await _storageService.addRecording(video);
     }
@@ -233,77 +246,96 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     _prompterController?.restart();
   }
 
-  void _shareTake(RecordedVideo video) {
-    if (!File(video.filePath).existsSync()) return;
-    SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(video.filePath)],
-        subject: 'Recorded Take: ${video.scriptTitle}',
-      ),
-    );
-  }
-
   void _showTakeCompletedDialog(RecordedVideo video) {
     showDialog(
       context: context,
       builder: (ctx) {
-        return AlertDialog(
-          icon: const Icon(Icons.check_circle_rounded, color: AppTheme.accent, size: 40),
-          title: const Text('Take recorded'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                video.scriptTitle,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
+        var isBest = video.isBest;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            icon: const Icon(
+              Icons.check_circle_rounded,
+              color: AppTheme.accent,
+              size: 40,
+            ),
+            title: Text('Take ${video.takeNumber} recorded'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  video.scriptDisplayName,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppTheme.textBody,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _StatChip(
+                      icon: Icons.timer_outlined,
+                      label: video.formattedDuration,
+                    ),
+                    const SizedBox(width: 8),
+                    _StatChip(
+                      icon: Icons.sd_storage_outlined,
+                      label: video.formattedSize,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () async {
+                    await _storageService.toggleBestTake(video.id);
+                    setDialogState(() => isBest = !isBest);
+                  },
+                  icon: Icon(
+                    isBest ? Icons.star_rounded : Icons.star_outline_rounded,
+                  ),
+                  label: Text(isBest ? 'Best take' : 'Mark as best take'),
+                ),
+              ],
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actionsOverflowAlignment: OverflowBarAlignment.center,
+            actionsOverflowDirection: VerticalDirection.down,
+            actions: [
+              OutlinedButton.icon(
+                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                label: const Text('Watch'),
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => VideoPlayerScreen(video: video),
+                    ),
+                  );
+                },
               ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _StatChip(icon: Icons.timer_outlined, label: video.formattedDuration),
-                  const SizedBox(width: 8),
-                  _StatChip(icon: Icons.sd_storage_outlined, label: video.formattedSize),
-                ],
+              OutlinedButton.icon(
+                icon: const Icon(Icons.ios_share_rounded, size: 18),
+                label: const Text('Share'),
+                onPressed: () => TakeSharing.share([video]),
+              ),
+              FilledButton.icon(
+                icon: const Icon(Icons.replay_rounded, size: 18),
+                label: const Text('New take'),
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  _recordAnotherTake();
+                },
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Done'),
               ),
             ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actionsOverflowAlignment: OverflowBarAlignment.center,
-          actionsOverflowDirection: VerticalDirection.down,
-          actions: [
-            OutlinedButton.icon(
-              icon: const Icon(Icons.play_arrow_rounded, size: 18),
-              label: const Text('Watch'),
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => VideoPlayerScreen(video: video)),
-                );
-              },
-            ),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.ios_share_rounded, size: 18),
-              label: const Text('Share'),
-              onPressed: () => _shareTake(video),
-            ),
-            FilledButton.icon(
-              icon: const Icon(Icons.replay_rounded, size: 18),
-              label: const Text('New take'),
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                _recordAnotherTake();
-              },
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                Navigator.of(context).pop();
-              },
-              child: const Text('Done'),
-            ),
-          ],
         );
       },
     );
@@ -313,9 +345,13 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     if (_isRecording) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-          content: Text('Voice follow comes back when the take stops. The camera has the microphone.'),
-        ));
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Voice follow comes back when the take stops. The camera has the microphone.',
+            ),
+          ),
+        );
       return;
     }
     toggleVoiceFollow(widget.script, _settings);
@@ -359,8 +395,9 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
 
     final media = MediaQuery.of(context);
     final prompterTop = media.padding.top + _gapBelowLens;
-    final heightFraction =
-        _isCompactPrompter ? _compactPrompterHeightFraction : _expandedPrompterHeightFraction;
+    final heightFraction = _isCompactPrompter
+        ? _compactPrompterHeightFraction
+        : _expandedPrompterHeightFraction;
 
     return PopScope(
       canPop: !_isRecording,
@@ -385,8 +422,10 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
                   script: widget.script,
                   settings: _settings,
                   isTransparentOverlay: true,
-                  onControllerReady: (controller) => _prompterController = controller,
-                  onPlayStateChanged: (playing) => setState(() => _isPrompterPlaying = playing),
+                  onControllerReady: (controller) =>
+                      _prompterController = controller,
+                  onPlayStateChanged: (playing) =>
+                      setState(() => _isPrompterPlaying = playing),
                   onCountdownFinished: _onCountdownFinished,
                   voiceFollow: voiceFollow,
                   onFinished: () {
@@ -412,7 +451,10 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
       mainAxisSize: MainAxisSize.min,
       children: [
         _isRecording
-            ? _RecordingIndicator(seconds: _recordSeconds, isVoiceFollowPaused: voiceFollow != null)
+            ? _RecordingIndicator(
+                seconds: _recordSeconds,
+                isVoiceFollowPaused: voiceFollow != null,
+              )
             : _FormatChip(quality: _settings.recordingQuality),
         const SizedBox(height: 12),
         PrompterHudControls(
@@ -431,7 +473,9 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
             _prompterController?.setFontSize(size);
           },
           onToggleMirror: () {
-            setState(() => _settings.mirrorHorizontal = !_settings.mirrorHorizontal);
+            setState(
+              () => _settings.mirrorHorizontal = !_settings.mirrorHorizontal,
+            );
             _storageService.saveSettings(_settings);
           },
           onOpenSettings: _openSettings,
@@ -458,21 +502,34 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
             ),
           ),
         ),
-        _ShutterButton(isRecording: _isRecording, isBusy: _isSavingTake, onTap: _toggleRecording),
+        _ShutterButton(
+          isRecording: _isRecording,
+          isBusy: _isSavingTake,
+          onTap: _toggleRecording,
+        ),
         Expanded(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               _OverlayIconButton(
-                icon: _isCompactPrompter ? Icons.unfold_more_rounded : Icons.unfold_less_rounded,
-                tooltip: _isCompactPrompter ? 'Taller prompter' : 'Shorter prompter',
-                onPressed: () => setState(() => _isCompactPrompter = !_isCompactPrompter),
+                icon: _isCompactPrompter
+                    ? Icons.unfold_more_rounded
+                    : Icons.unfold_less_rounded,
+                tooltip: _isCompactPrompter
+                    ? 'Taller prompter'
+                    : 'Shorter prompter',
+                onPressed: () =>
+                    setState(() => _isCompactPrompter = !_isCompactPrompter),
               ),
               const SizedBox(width: 8),
               _OverlayIconButton(
                 icon: Icons.flip_camera_ios_rounded,
-                tooltip: _isRecording ? 'Can\'t switch while recording' : 'Switch camera',
-                onPressed: _cameraService.canSwitchCamera && !_isRecording ? _switchCamera : null,
+                tooltip: _isRecording
+                    ? 'Can\'t switch while recording'
+                    : 'Switch camera',
+                onPressed: _cameraService.canSwitchCamera && !_isRecording
+                    ? _switchCamera
+                    : null,
               ),
             ],
           ),
@@ -483,13 +540,16 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
 
   Widget _buildCameraPreview() {
     final controller = _cameraService.controller;
-    if (_cameraService.isInitialized && controller != null && !_cameraService.isSimulated) {
+    if (_cameraService.isInitialized &&
+        controller != null &&
+        !_cameraService.isSimulated) {
       return _RecordedFramePreview(controller: controller);
     }
     return _CameraUnavailableView(
       message: _cameraService.errorMessage ?? 'Starting camera…',
-      onOpenSettings:
-          _cameraService.isPermissionDenied ? _cameraService.openPermissionSettings : null,
+      onOpenSettings: _cameraService.isPermissionDenied
+          ? _cameraService.openPermissionSettings
+          : null,
     );
   }
 }
@@ -539,12 +599,19 @@ class _CameraUnavailableView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.videocam_off_rounded, size: 48, color: Colors.white.withValues(alpha: 0.3)),
+          Icon(
+            Icons.videocam_off_rounded,
+            size: 48,
+            color: Colors.white.withValues(alpha: 0.3),
+          ),
           const SizedBox(height: 10),
           Text(
             message,
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 13),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.55),
+              fontSize: 13,
+            ),
           ),
           if (onOpenSettings != null) ...[
             const SizedBox(height: 12),
@@ -586,7 +653,11 @@ class _OverlayIconButton extends StatelessWidget {
   final String tooltip;
   final VoidCallback? onPressed;
 
-  const _OverlayIconButton({required this.icon, required this.tooltip, this.onPressed});
+  const _OverlayIconButton({
+    required this.icon,
+    required this.tooltip,
+    this.onPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -631,7 +702,10 @@ class _RecordingIndicator extends StatelessWidget {
   final int seconds;
   final bool isVoiceFollowPaused;
 
-  const _RecordingIndicator({required this.seconds, required this.isVoiceFollowPaused});
+  const _RecordingIndicator({
+    required this.seconds,
+    required this.isVoiceFollowPaused,
+  });
 
   String get _formattedDuration {
     final m = seconds ~/ 60;
@@ -647,7 +721,9 @@ class _RecordingIndicator extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.recordingRed.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.red.withValues(alpha: 0.4), blurRadius: 10)],
+        boxShadow: [
+          BoxShadow(color: Colors.red.withValues(alpha: 0.4), blurRadius: 10),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -658,7 +734,10 @@ class _RecordingIndicator extends StatelessWidget {
             child: Container(
               width: 9,
               height: 9,
-              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -695,7 +774,11 @@ class _ShutterButton extends StatelessWidget {
   final bool isBusy;
   final VoidCallback onTap;
 
-  const _ShutterButton({required this.isRecording, required this.isBusy, required this.onTap});
+  const _ShutterButton({
+    required this.isRecording,
+    required this.isBusy,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -723,7 +806,10 @@ class _ShutterButton extends StatelessWidget {
               child: isBusy
                   ? const Padding(
                       padding: EdgeInsets.all(8),
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : null,
             ),
@@ -753,7 +839,10 @@ class _StatChip extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: AppTheme.primaryLight),
           const SizedBox(width: 6),
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
         ],
       ),
     );
