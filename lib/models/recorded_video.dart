@@ -18,6 +18,10 @@ class RecordedVideo {
   /// A copy is in the phone's public videos (Movies/Cuevanta or the Photos album).
   final bool isSavedToDevice;
 
+  /// Address of the public copy when known (an Android content:// URI), so it
+  /// can be shared directly without copying the video again.
+  final String? publicCopyUri;
+
   RecordedVideo({
     required this.id,
     required this.filePath,
@@ -29,6 +33,7 @@ class RecordedVideo {
     this.takeNumber = 1,
     this.isBest = false,
     this.isSavedToDevice = false,
+    this.publicCopyUri,
   });
 
   /// "03 · Glasses that read silent words · take 2"
@@ -55,7 +60,7 @@ class RecordedVideo {
     return '${(fileSizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
-  RecordedVideo copyWith({int? takeNumber, bool? isBest, bool? isSavedToDevice}) {
+  RecordedVideo copyWith({int? takeNumber, bool? isBest, bool? isSavedToDevice, String? publicCopyUri}) {
     return RecordedVideo(
       id: id,
       filePath: filePath,
@@ -67,6 +72,7 @@ class RecordedVideo {
       takeNumber: takeNumber ?? this.takeNumber,
       isBest: isBest ?? this.isBest,
       isSavedToDevice: isSavedToDevice ?? this.isSavedToDevice,
+      publicCopyUri: publicCopyUri ?? this.publicCopyUri,
     );
   }
 
@@ -82,6 +88,7 @@ class RecordedVideo {
       'takeNumber': takeNumber,
       'isBest': isBest,
       'isSavedToDevice': isSavedToDevice,
+      'publicCopyUri': publicCopyUri,
     };
   }
 
@@ -99,6 +106,7 @@ class RecordedVideo {
       takeNumber: map['takeNumber'] as int? ?? 0,
       isBest: map['isBest'] as bool? ?? false,
       isSavedToDevice: map['isSavedToDevice'] as bool? ?? false,
+      publicCopyUri: map['publicCopyUri'] as String?,
     );
   }
 

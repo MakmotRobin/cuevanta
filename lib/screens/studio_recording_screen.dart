@@ -12,12 +12,12 @@ import '../services/camera_service.dart';
 import '../services/device_video_library.dart';
 import '../services/recording_format.dart';
 import '../services/storage_service.dart';
-import '../services/take_sharing.dart';
 import '../theme/app_theme.dart';
 import '../widgets/prompter_hud_controls.dart';
 import '../widgets/prompter_settings_sheet.dart';
 import '../voice/voice_follow_host.dart';
 import '../widgets/prompter_view.dart';
+import '../widgets/share_action.dart';
 import 'video_player_screen.dart';
 
 class StudioRecordingScreen extends StatefulWidget {
@@ -234,12 +234,12 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   Future<void> _copyTakeToDevice(RecordedVideo video) async {
     if (!_settings.saveTakesToDevice || !_deviceLibrary.isAvailable) return;
     final messenger = ScaffoldMessenger.of(context);
-    final outcome = await _deviceLibrary.save(video);
-    if (outcome == DeviceSaveOutcome.saved) {
-      await _storageService.markSavedToDevice({video.id});
+    final result = await _deviceLibrary.save(video);
+    if (result.isSaved) {
+      await _storageService.markSavedToDevice({video.id: result.location});
       return;
     }
-    final reason = outcome == DeviceSaveOutcome.permissionDenied
+    final reason = result.outcome == DeviceSaveOutcome.permissionDenied
         ? 'permission was not given'
         : 'something went wrong';
     messenger.showSnackBar(SnackBar(
@@ -359,10 +359,13 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
                   );
                 },
               ),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.ios_share_rounded, size: 18),
-                label: const Text('Share'),
-                onPressed: () => TakeSharing.share([video]),
+              ShareAction(
+                takes: [video],
+                builder: (context, isPreparing, onPressed) => OutlinedButton.icon(
+                  icon: const Icon(Icons.ios_share_rounded, size: 18),
+                  label: Text(isPreparing ? 'Preparing…' : 'Share'),
+                  onPressed: onPressed,
+                ),
               ),
               FilledButton.icon(
                 icon: const Icon(Icons.replay_rounded, size: 18),

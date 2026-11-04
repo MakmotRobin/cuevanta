@@ -20,9 +20,9 @@ class _FakeDeviceLibrary implements DeviceVideoLibrary {
   bool isAvailable = true;
 
   @override
-  Future<DeviceSaveOutcome> save(RecordedVideo take) async {
+  Future<DeviceSaveResult> save(RecordedVideo take) async {
     if (outcome == DeviceSaveOutcome.saved) savedIds.add(take.id);
-    return outcome;
+    return DeviceSaveResult(outcome, location: 'content://media/external/video/media/${take.id}');
   }
 }
 
@@ -77,7 +77,7 @@ void main() {
     test('marking takes as copied only changes those takes', () async {
       final storage = await _storageWith([_take('t1'), _take('t2')]);
 
-      await storage.markSavedToDevice({'t2'});
+      await storage.markSavedToDevice({'t2': 'content://media/external/video/media/2'});
 
       final flags = {for (final t in await storage.getRecordings()) t.id: t.isSavedToDevice};
       expect(flags, {'t1': false, 't2': true});
@@ -167,9 +167,10 @@ void main() {
       answerWith((_) async => 'content://media/external/video/media/1');
       final take = _take('t2');
 
-      final outcome = await AndroidMoviesFolder().save(take);
+      final result = await AndroidMoviesFolder().save(take);
 
-      expect(outcome, DeviceSaveOutcome.saved);
+      expect(result.outcome, DeviceSaveOutcome.saved);
+      expect(result.location, 'content://media/external/video/media/1');
       expect(calls.single.arguments, {'path': take.filePath, 'fileName': take.exportFileName});
     });
 
@@ -177,7 +178,7 @@ void main() {
       TestWidgetsFlutterBinding.ensureInitialized();
       answerWith((_) async => throw PlatformException(code: 'save_failed', message: 'disk full'));
 
-      expect(await AndroidMoviesFolder().save(_take('t1')), DeviceSaveOutcome.failed);
+      expect((await AndroidMoviesFolder().save(_take('t1'))).outcome, DeviceSaveOutcome.failed);
     });
 
     test('takes go to Movies/Cuevanta', () {

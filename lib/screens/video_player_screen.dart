@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import '../models/recorded_video.dart';
 import '../services/storage_service.dart';
-import '../services/take_sharing.dart';
+import '../widgets/share_action.dart';
 import '../theme/app_theme.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -78,13 +78,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() => _showControls = true);
   }
 
-  Future<void> _shareVideo() async {
-    final messenger = ScaffoldMessenger.of(context);
-    if (!await TakeSharing.share([widget.video])) {
-      messenger.showSnackBar(const SnackBar(content: Text('This video file is no longer on this device.')));
-    }
-  }
-
   Future<void> _toggleBest() async {
     await StorageService().toggleBestTake(widget.video.id);
     if (mounted) setState(() => _isBest = !_isBest);
@@ -111,10 +104,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             tooltip: _isBest ? 'Best take (tap to clear)' : 'Mark as best take',
             onPressed: _toggleBest,
           ),
-          IconButton(
-            icon: const Icon(Icons.ios_share_rounded),
-            tooltip: 'Share take',
-            onPressed: _shareVideo,
+          ShareAction(
+            takes: [widget.video],
+            builder: (context, isPreparing, onPressed) => IconButton(
+              icon: isPreparing ? const SharePreparingIndicator() : const Icon(Icons.ios_share_rounded),
+              tooltip: isPreparing ? 'Preparing to share…' : 'Share take',
+              onPressed: onPressed,
+            ),
           ),
         ],
       ),

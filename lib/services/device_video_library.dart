@@ -7,6 +7,17 @@ import '../models/recorded_video.dart';
 
 enum DeviceSaveOutcome { saved, permissionDenied, failed }
 
+class DeviceSaveResult {
+  final DeviceSaveOutcome outcome;
+
+  /// Where the public copy is (an Android content:// URI or file path), when known.
+  final String? location;
+
+  const DeviceSaveResult(this.outcome, {this.location});
+
+  bool get isSaved => outcome == DeviceSaveOutcome.saved;
+}
+
 /// The phone's public video collection, where takes are kept outside the app:
 /// visible in Gallery/Photos, reachable from a computer, and kept on uninstall.
 abstract class DeviceVideoLibrary {
@@ -18,7 +29,7 @@ abstract class DeviceVideoLibrary {
   bool get isAvailable;
 
   /// Copies [take] into the public collection, leaving the app's own copy in place.
-  Future<DeviceSaveOutcome> save(RecordedVideo take);
+  Future<DeviceSaveResult> save(RecordedVideo take);
 
   factory DeviceVideoLibrary.forThisDevice() {
     if (kIsWeb) return const _UnavailableVideoLibrary();
@@ -39,26 +50,26 @@ class AndroidMoviesFolder implements DeviceVideoLibrary {
   bool get isAvailable => true;
 
   @override
-  Future<DeviceSaveOutcome> save(RecordedVideo take) async {
+  Future<DeviceSaveResult> save(RecordedVideo take) async {
     final firstTry = await _copy(take);
-    if (firstTry != DeviceSaveOutcome.permissionDenied) return firstTry;
+    if (firstTry.outcome != DeviceSaveOutcome.permissionDenied) return firstTry;
 
     // Only Android 9 and older ask for this; newer versions never get here.
     final granted = await Permission.storage.request().isGranted;
-    return granted ? _copy(take) : DeviceSaveOutcome.permissionDenied;
+    return granted ? _copy(take) : firstTry;
   }
 
-  Future<DeviceSaveOutcome> _copy(RecordedVideo take) async {
+  Future<DeviceSaveResult> _copy(RecordedVideo take) async {
     try {
-      await _channel.invokeMethod<String>('saveVideo', {
+      final location = await _channel.invokeMethod<String>('saveVideo', {
         'path': take.filePath,
         'fileName': take.exportFileName,
       });
-      return DeviceSaveOutcome.saved;
+      return DeviceSaveResult(DeviceSaveOutcome.saved, location: location);
     } on PlatformException catch (error) {
-      if (error.code == 'permission_denied') return DeviceSaveOutcome.permissionDenied;
+      if (error.code == 'permission_denied') return const DeviceSaveResult(DeviceSaveOutcome.permissionDenied);
       debugPrint('Could not save ${take.filePath} to Movies: ${error.message}');
-      return DeviceSaveOutcome.failed;
+      return const DeviceSaveResult(DeviceSaveOutcome.failed);
     }
   }
 }
@@ -74,16 +85,18 @@ class IosPhotosAlbum implements DeviceVideoLibrary {
   bool get isAvailable => true;
 
   @override
-  Future<DeviceSaveOutcome> save(RecordedVideo take) async {
-    if (!await Gal.requestAccess(toAlbum: true)) return DeviceSaveOutcome.permissionDenied;
+  Future<DeviceSaveResult> save(RecordedVideo take) async {
+    if (!await Gal.requestAccess(toAlbum: true)) {
+      return const DeviceSaveResult(DeviceSaveOutcome.permissionDenied);
+    }
     try {
       await Gal.putVideo(take.filePath, album: DeviceVideoLibrary.folderName);
-      return DeviceSaveOutcome.saved;
+      return const DeviceSaveResult(DeviceSaveOutcome.saved);
     } on GalException catch (error) {
       debugPrint('Could not save ${take.filePath} to Photos: ${error.type.message}');
-      return error.type == GalExceptionType.accessDenied
+      return DeviceSaveResult(error.type == GalExceptionType.accessDenied
           ? DeviceSaveOutcome.permissionDenied
-          : DeviceSaveOutcome.failed;
+          : DeviceSaveOutcome.failed);
     }
   }
 }
@@ -98,5 +111,5 @@ class _UnavailableVideoLibrary implements DeviceVideoLibrary {
   bool get isAvailable => false;
 
   @override
-  Future<DeviceSaveOutcome> save(RecordedVideo take) async => DeviceSaveOutcome.failed;
+  Future<DeviceSaveResult> save(RecordedVideo take) async => const DeviceSaveResult(DeviceSaveOutcome.failed);
 }

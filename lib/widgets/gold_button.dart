@@ -4,7 +4,8 @@ import '../theme/app_theme.dart';
 /// Champagne-gold gradient call-to-action with a tracked uppercase label.
 class GoldButton extends StatelessWidget {
   final String label;
-  final VoidCallback onPressed;
+  /// Null shows the button dimmed and ignores taps.
+  final VoidCallback? onPressed;
   final IconData? icon;
   final double height;
 
@@ -19,7 +20,7 @@ class GoldButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(height * 0.3);
-    return Container(
+    final button = Container(
       height: height,
       decoration: BoxDecoration(
         gradient: AppTheme.goldGradient,
@@ -61,6 +62,11 @@ class GoldButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 150),
+      opacity: onPressed == null ? 0.6 : 1,
+      child: button,
     );
   }
 }

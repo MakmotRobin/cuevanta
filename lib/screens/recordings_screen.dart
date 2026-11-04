@@ -5,10 +5,10 @@ import '../models/recorded_video.dart';
 import '../models/take_library.dart';
 import '../services/device_video_library.dart';
 import '../services/storage_service.dart';
-import '../services/take_sharing.dart';
 import '../theme/app_theme.dart';
 import '../widgets/gold_button.dart';
 import '../widgets/gold_ring_icon.dart';
+import '../widgets/share_action.dart';
 import 'video_player_screen.dart';
 
 class RecordingsScreen extends StatefulWidget {
@@ -55,13 +55,13 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
 
   Future<void> _copyTakesToDevice(List<RecordedVideo> takes) async {
     final messenger = ScaffoldMessenger.of(context);
-    final copied = <String>{};
+    final copied = <String, String?>{};
     var permissionDenied = false;
     for (var i = 0; i < takes.length && !permissionDenied; i++) {
       setState(() => _copyProgress = (i + 1, takes.length));
-      final outcome = await _deviceLibrary.save(takes[i]);
-      if (outcome == DeviceSaveOutcome.saved) copied.add(takes[i].id);
-      permissionDenied = outcome == DeviceSaveOutcome.permissionDenied;
+      final result = await _deviceLibrary.save(takes[i]);
+      if (result.isSaved) copied[takes[i].id] = result.location;
+      permissionDenied = result.outcome == DeviceSaveOutcome.permissionDenied;
     }
     final updated = await _storageService.markSavedToDevice(copied);
     if (!mounted) return;
@@ -101,14 +101,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   Future<void> _toggleBest(RecordedVideo video) async {
     final updated = await _storageService.toggleBestTake(video.id);
     if (mounted) setState(() => _recordings = updated);
-  }
-
-  Future<void> _share(List<RecordedVideo> takes) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final shared = await TakeSharing.share(takes);
-    if (!shared) {
-      messenger.showSnackBar(const SnackBar(content: Text('Those video files are no longer on this device.')));
-    }
   }
 
   Future<void> _deleteRecording(RecordedVideo video) async {
@@ -164,10 +156,13 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                      child: GoldButton(
-                        label: 'Share best takes (${bestTakes.length})',
-                        icon: Icons.ios_share_rounded,
-                        onPressed: () => _share(bestTakes),
+                      child: ShareAction(
+                        takes: bestTakes,
+                        builder: (context, isPreparing, onPressed) => GoldButton(
+                          label: isPreparing ? 'Preparing…' : 'Share best takes (${bestTakes.length})',
+                          icon: Icons.ios_share_rounded,
+                          onPressed: onPressed,
+                        ),
                       ),
                     ),
                   ),
@@ -271,11 +266,16 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   ],
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.ios_share_rounded, size: 20),
-                visualDensity: VisualDensity.compact,
-                tooltip: 'Share take',
-                onPressed: () => _share([video]),
+              ShareAction(
+                takes: [video],
+                builder: (context, isPreparing, onPressed) => IconButton(
+                  icon: isPreparing
+                      ? const SharePreparingIndicator()
+                      : const Icon(Icons.ios_share_rounded, size: 20),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: isPreparing ? 'Preparing to share…' : 'Share take',
+                  onPressed: onPressed,
+                ),
               ),
               IconButton(
                 icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppTheme.textSubtle),

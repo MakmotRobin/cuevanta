@@ -148,11 +148,14 @@ class StorageService {
     return updated;
   }
 
-  /// Records that these takes now have a copy in the phone's public videos.
-  Future<List<RecordedVideo>> markSavedToDevice(Set<String> ids) async {
+  /// Records that these takes now have a public copy, keyed by take id, with
+  /// the copy's location when the platform reports one.
+  Future<List<RecordedVideo>> markSavedToDevice(Map<String, String?> locationsById) async {
     final updated = [
       for (final take in await getRecordings())
-        ids.contains(take.id) ? take.copyWith(isSavedToDevice: true) : take,
+        locationsById.containsKey(take.id)
+            ? take.copyWith(isSavedToDevice: true, publicCopyUri: locationsById[take.id])
+            : take,
     ];
     await _saveRecordings(updated);
     return updated;
