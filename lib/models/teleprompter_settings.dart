@@ -15,6 +15,17 @@ enum ScriptBoxArea {
   fullscreen,
 }
 
+/// Vertical video resolution for studio takes (always recorded 9:16 portrait).
+enum RecordingQuality {
+  hd720('720p'),
+  fullHd1080('1080p'),
+  uhd4k('4K');
+
+  final String label;
+
+  const RecordingQuality(this.label);
+}
+
 class TeleprompterSettings {
   double fontSize;
   double lineSpacing;
@@ -36,6 +47,7 @@ class TeleprompterSettings {
   bool preferFrontCamera;
   bool enableHapticFeedback;
   bool followVoice; // scroll with the reader's speech instead of a fixed speed
+  RecordingQuality recordingQuality;
 
   TeleprompterSettings({
     this.fontSize = 28.0,
@@ -58,6 +70,7 @@ class TeleprompterSettings {
     this.preferFrontCamera = true,
     this.enableHapticFeedback = true,
     this.followVoice = false,
+    this.recordingQuality = RecordingQuality.fullHd1080,
   });
 
   Map<String, dynamic> toMap() {
@@ -82,6 +95,7 @@ class TeleprompterSettings {
       'preferFrontCamera': preferFrontCamera,
       'enableHapticFeedback': enableHapticFeedback,
       'followVoice': followVoice,
+      'recordingQuality': recordingQuality.name,
     };
   }
 
@@ -110,6 +124,8 @@ class TeleprompterSettings {
       preferFrontCamera: map['preferFrontCamera'] as bool? ?? true,
       enableHapticFeedback: map['enableHapticFeedback'] as bool? ?? true,
       followVoice: map['followVoice'] as bool? ?? false,
+      recordingQuality: RecordingQuality.values.asNameMap()[map['recordingQuality']] ??
+          RecordingQuality.fullHd1080,
     );
   }
 
@@ -139,6 +155,7 @@ class TeleprompterSettings {
     bool? preferFrontCamera,
     bool? enableHapticFeedback,
     bool? followVoice,
+    RecordingQuality? recordingQuality,
   }) {
     return TeleprompterSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -161,6 +178,7 @@ class TeleprompterSettings {
       preferFrontCamera: preferFrontCamera ?? this.preferFrontCamera,
       enableHapticFeedback: enableHapticFeedback ?? this.enableHapticFeedback,
       followVoice: followVoice ?? this.followVoice,
+      recordingQuality: recordingQuality ?? this.recordingQuality,
     );
   }
 }

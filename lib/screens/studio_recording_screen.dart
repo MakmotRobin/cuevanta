@@ -2,11 +2,14 @@ import 'dart:async';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../app_orientations.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/recorded_video.dart';
 import '../models/script.dart';
 import '../models/teleprompter_settings.dart';
 import '../services/camera_service.dart';
+import '../services/recording_format.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/prompter_hud_controls.dart';
@@ -31,7 +34,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     with WidgetsBindingObserver, VoiceFollowHost {
   static const double _compactPrompterHeightFraction = 0.40;
   static const double _expandedPrompterHeightFraction = 0.55;
-  static const double _topBarHeight = 56;
+  static const double _gapBelowLens = 6;
 
   final CameraService _cameraService = CameraService();
   final StorageService _storageService = StorageService();
@@ -49,11 +52,13 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   double _currentFontSize = 28.0;
 
   bool _isCompactPrompter = true;
+  RecordingQuality? _openedQuality;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    SystemChrome.setPreferredOrientations(studioOrientations);
     _loadSettingsAndCamera();
   }
 
@@ -62,7 +67,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     _currentSpeed = widget.script.customSpeed ?? _settings.scrollSpeed;
     _currentFontSize = widget.script.customFontSize ?? _settings.fontSize;
 
-    await _cameraService.initialize(preferFront: _settings.preferFrontCamera);
+    await _openCamera();
     prepareVoiceFollow(widget.script, _settings);
 
     if (mounted) setState(() => _isLoading = false);
@@ -88,9 +93,23 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   }
 
   Future<void> _reacquireCamera() async {
-    await _cameraService.initialize(preferFront: _settings.preferFrontCamera);
+    await _openCamera();
     if (mounted) setState(() {});
     await startVoiceFollow(_settings);
+  }
+
+  Future<void> _openCamera() {
+    _openedQuality = _settings.recordingQuality;
+    return _cameraService.initialize(
+        preferFront: _settings.preferFrontCamera,
+        quality: _settings.recordingQuality,
+      );
+  }
+
+  Future<void> _reopenCameraForQuality(RecordingQuality quality) async {
+    if (_isRecording || quality == _openedQuality) return;
+    await _openCamera();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -310,6 +329,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
       builder: (ctx) => PrompterSettingsSheet(
         settings: _settings,
         onSettingsChanged: (updated) {
+          _reopenCameraForQuality(updated.recordingQuality);
           setState(() {
             _settings = updated;
             _currentSpeed = updated.scrollSpeed;
@@ -326,6 +346,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    SystemChrome.setPreferredOrientations(allAppOrientations);
     _recordTimer?.cancel();
     disposeVoiceFollow();
     _cameraService.dispose();
@@ -337,7 +358,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     if (_isLoading) return const _StudioLoadingView();
 
     final media = MediaQuery.of(context);
-    final prompterTop = media.padding.top + _topBarHeight;
+    final prompterTop = media.padding.top + _gapBelowLens;
     final heightFraction =
         _isCompactPrompter ? _compactPrompterHeightFraction : _expandedPrompterHeightFraction;
 
@@ -375,12 +396,6 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
               ),
             ),
             Positioned(
-              top: media.padding.top + 4,
-              left: 12,
-              right: 12,
-              child: _buildTopBar(),
-            ),
-            Positioned(
               bottom: media.padding.bottom + 16,
               left: 12,
               right: 12,
@@ -392,40 +407,14 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     );
   }
 
-  Widget _buildTopBar() {
-    return Row(
-      children: [
-        _OverlayIconButton(
-          icon: Icons.close_rounded,
-          tooltip: 'Close studio',
-          onPressed: _closeStudio,
-        ),
-        Expanded(
-          child: Center(
-            child: _isRecording
-                ? _RecordingIndicator(seconds: _recordSeconds, isVoiceFollowPaused: voiceFollow != null)
-                : const _LookAtCameraBadge(),
-          ),
-        ),
-        _OverlayIconButton(
-          icon: _isCompactPrompter ? Icons.unfold_more_rounded : Icons.unfold_less_rounded,
-          tooltip: _isCompactPrompter ? 'Taller prompter' : 'Shorter prompter',
-          onPressed: () => setState(() => _isCompactPrompter = !_isCompactPrompter),
-        ),
-        const SizedBox(width: 8),
-        _OverlayIconButton(
-          icon: Icons.flip_camera_ios_rounded,
-          tooltip: _isRecording ? 'Can\'t switch while recording' : 'Switch camera',
-          onPressed: _cameraService.canSwitchCamera && !_isRecording ? _switchCamera : null,
-        ),
-      ],
-    );
-  }
-
   Widget _buildBottomControls() {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        _isRecording
+            ? _RecordingIndicator(seconds: _recordSeconds, isVoiceFollowPaused: voiceFollow != null)
+            : _FormatChip(quality: _settings.recordingQuality),
+        const SizedBox(height: 12),
         PrompterHudControls(
           controller: _prompterController,
           script: widget.script,
@@ -450,10 +439,43 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
           voiceFollowState: voiceFollow?.state,
         ),
         const SizedBox(height: 16),
-        _ShutterButton(
-          isRecording: _isRecording,
-          isBusy: _isSavingTake,
-          onTap: _toggleRecording,
+        _buildShutterRow(),
+      ],
+    );
+  }
+
+  /// Camera-app layout: close on the left, shutter centred, camera tools on the right.
+  Widget _buildShutterRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: _OverlayIconButton(
+              icon: Icons.close_rounded,
+              tooltip: 'Close studio',
+              onPressed: _closeStudio,
+            ),
+          ),
+        ),
+        _ShutterButton(isRecording: _isRecording, isBusy: _isSavingTake, onTap: _toggleRecording),
+        Expanded(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              _OverlayIconButton(
+                icon: _isCompactPrompter ? Icons.unfold_more_rounded : Icons.unfold_less_rounded,
+                tooltip: _isCompactPrompter ? 'Taller prompter' : 'Shorter prompter',
+                onPressed: () => setState(() => _isCompactPrompter = !_isCompactPrompter),
+              ),
+              const SizedBox(width: 8),
+              _OverlayIconButton(
+                icon: Icons.flip_camera_ios_rounded,
+                tooltip: _isRecording ? 'Can\'t switch while recording' : 'Switch camera',
+                onPressed: _cameraService.canSwitchCamera && !_isRecording ? _switchCamera : null,
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -462,7 +484,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   Widget _buildCameraPreview() {
     final controller = _cameraService.controller;
     if (_cameraService.isInitialized && controller != null && !_cameraService.isSimulated) {
-      return _CoverCameraPreview(controller: controller);
+      return _RecordedFramePreview(controller: controller);
     }
     return _CameraUnavailableView(
       message: _cameraService.errorMessage ?? 'Starting camera…',
@@ -472,28 +494,25 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   }
 }
 
-/// Fills the screen with the camera feed (cropping instead of letterboxing).
-class _CoverCameraPreview extends StatelessWidget {
+/// Shows exactly the frame that is recorded (9:16), pinned just below the
+/// status bar so the script overlay sits right under the lens.
+class _RecordedFramePreview extends StatelessWidget {
   final CameraController controller;
 
-  const _CoverCameraPreview({required this.controller});
+  const _RecordedFramePreview({required this.controller});
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isPortrait = size.height > size.width;
-    // The sensor reports a landscape aspect ratio (width / height).
-    final sensorRatio = controller.value.aspectRatio;
-    final previewWidth = isPortrait ? size.width : size.height * sensorRatio;
-    final previewHeight = isPortrait ? size.width * sensorRatio : size.height;
-
-    return ClipRect(
-      child: FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: previewWidth,
-          height: previewHeight,
-          child: CameraPreview(controller),
+    return ColoredBox(
+      color: AppTheme.ink,
+      child: Padding(
+        padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+            child: CameraPreview(controller),
+          ),
         ),
       ),
     );
@@ -515,7 +534,7 @@ class _CameraUnavailableView extends StatelessWidget {
           colors: [AppTheme.cardDark, AppTheme.ink],
         ),
       ),
-      alignment: const Alignment(0, 0.35),
+      alignment: const Alignment(0, 0.1),
       padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -585,33 +604,24 @@ class _OverlayIconButton extends StatelessWidget {
   }
 }
 
-class _LookAtCameraBadge extends StatelessWidget {
-  const _LookAtCameraBadge();
+/// Shows the recording format before a take ("9:16 · 1080P · 30 FPS").
+class _FormatChip extends StatelessWidget {
+  final RecordingQuality quality;
+
+  const _FormatChip({required this.quality});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.6),
+        color: AppTheme.ink.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.goldLight.withValues(alpha: 0.6)),
+        border: Border.all(color: AppTheme.gold.withValues(alpha: 0.45)),
       ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.arrow_upward_rounded, color: AppTheme.goldLight, size: 14),
-          SizedBox(width: 4),
-          Text(
-            'LOOK AT LENS',
-            style: TextStyle(
-              color: AppTheme.goldLight,
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.8,
-            ),
-          ),
-        ],
+      child: Text(
+        '9:16  ·  ${quality.label.toUpperCase()}  ·  ${RecordingFormat.framesPerSecond} FPS',
+        style: AppTheme.eyebrow.copyWith(fontSize: 9.5, letterSpacing: 2),
       ),
     );
   }

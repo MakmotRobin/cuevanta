@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'app_orientations.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/script_list_screen.dart';
 import 'screens/splash_screen.dart';
@@ -9,13 +10,7 @@ import 'theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Portrait for selfie video, landscape for glass prompter rigs.
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
+  await SystemChrome.setPreferredOrientations(allAppOrientations);
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(

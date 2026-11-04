@@ -228,6 +228,19 @@ class _PrompterSettingsSheetState extends State<PrompterSettingsSheet> {
 
   List<Widget> _buildStudioSection() => [
         const _SectionTitle('Recording studio'),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 10),
+          child: Text(
+            'Vertical 9:16 at 30 fps, front camera by default.',
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          ),
+        ),
+        _SegmentedChoice<RecordingQuality>(
+          selected: _settings.recordingQuality,
+          options: {for (final quality in RecordingQuality.values) quality: (null, quality.label)},
+          onSelected: (quality) => _update((s) => s.recordingQuality = quality),
+        ),
+        const SizedBox(height: 8),
         _SliderRow(
           label: 'Backdrop',
           value: _settings.overlayOpacity,
@@ -276,7 +289,7 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _SliderRow extends StatelessWidget {
-  static const double _labelWidth = 64;
+  static const double _labelWidth = 80;
   static const double _valueWidth = 72;
 
   final String? label;
