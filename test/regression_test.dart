@@ -38,6 +38,7 @@ void main() {
         onFontSizeChanged: (_) {},
         onToggleMirror: () {},
         onOpenSettings: () {},
+        onToggleVoiceFollow: () {},
       ),
     )));
 

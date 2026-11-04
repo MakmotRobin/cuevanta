@@ -11,6 +11,7 @@ import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/prompter_hud_controls.dart';
 import '../widgets/prompter_settings_sheet.dart';
+import '../voice/voice_follow_host.dart';
 import '../widgets/prompter_view.dart';
 import 'video_player_screen.dart';
 
@@ -27,7 +28,7 @@ class StudioRecordingScreen extends StatefulWidget {
 }
 
 class _StudioRecordingScreenState extends State<StudioRecordingScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, VoiceFollowHost {
   static const double _compactPrompterHeightFraction = 0.40;
   static const double _expandedPrompterHeightFraction = 0.55;
   static const double _topBarHeight = 56;
@@ -62,6 +63,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     _currentFontSize = widget.script.customFontSize ?? _settings.fontSize;
 
     await _cameraService.initialize(preferFront: _settings.preferFrontCamera);
+    prepareVoiceFollow(widget.script, _settings);
 
     if (mounted) setState(() => _isLoading = false);
   }
@@ -79,6 +81,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   }
 
   Future<void> _releaseCameraForBackground() async {
+    await voiceFollow?.suspend();
     if (_isRecording) await _finishTake();
     await _cameraService.dispose();
     if (mounted) setState(() {});
@@ -87,18 +90,30 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   Future<void> _reacquireCamera() async {
     await _cameraService.initialize(preferFront: _settings.preferFrontCamera);
     if (mounted) setState(() {});
+    await startVoiceFollow(_settings);
   }
+
+  @override
+  int currentParagraphAtGuide() => _prompterController?.paragraphAtGuide() ?? 0;
 
   void _onCountdownFinished() {
-    if (_settings.autoRecordVideo) _startRecordingVideo();
+    if (_settings.autoRecordVideo) {
+      _startRecordingVideo();
+    } else {
+      startVoiceFollow(_settings);
+    }
   }
 
+  /// Voice-follow gives up the microphone first: on Android the camera's
+  /// recording would otherwise leave the speech recogniser hearing silence.
   Future<void> _startRecordingVideo() async {
     if (_isRecording) return;
+    await voiceFollow?.suspend();
     final started = await _cameraService.startRecording();
     if (!mounted) return;
     if (!started) {
       _showCameraUnavailableMessage();
+      await startVoiceFollow(_settings);
       return;
     }
 
@@ -151,6 +166,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     }
 
     if (mounted) setState(() => _isSavingTake = false);
+    await startVoiceFollow(_settings);
     return video;
   }
 
@@ -274,6 +290,18 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     );
   }
 
+  void _toggleVoiceFollowUnlessRecording() {
+    if (_isRecording) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content: Text('Voice follow comes back when the take stops. The camera has the microphone.'),
+        ));
+      return;
+    }
+    toggleVoiceFollow(widget.script, _settings);
+  }
+
   void _openSettings() {
     showModalBottomSheet(
       context: context,
@@ -289,6 +317,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
           });
           _prompterController?.setSpeed(updated.scrollSpeed);
           _prompterController?.setFontSize(updated.fontSize);
+          if (!_isRecording) applyVoiceFollowSetting(widget.script, updated);
         },
       ),
     );
@@ -298,6 +327,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _recordTimer?.cancel();
+    disposeVoiceFollow();
     _cameraService.dispose();
     super.dispose();
   }
@@ -337,6 +367,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
                   onControllerReady: (controller) => _prompterController = controller,
                   onPlayStateChanged: (playing) => setState(() => _isPrompterPlaying = playing),
                   onCountdownFinished: _onCountdownFinished,
+                  voiceFollow: voiceFollow,
                   onFinished: () {
                     if (_isRecording) _stopRecordingAndShowSummary();
                   },
@@ -372,7 +403,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
         Expanded(
           child: Center(
             child: _isRecording
-                ? _RecordingIndicator(seconds: _recordSeconds)
+                ? _RecordingIndicator(seconds: _recordSeconds, isVoiceFollowPaused: voiceFollow != null)
                 : const _LookAtCameraBadge(),
           ),
         ),
@@ -415,6 +446,8 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
             _storageService.saveSettings(_settings);
           },
           onOpenSettings: _openSettings,
+          onToggleVoiceFollow: _toggleVoiceFollowUnlessRecording,
+          voiceFollowState: voiceFollow?.state,
         ),
         const SizedBox(height: 16),
         _ShutterButton(
@@ -586,8 +619,9 @@ class _LookAtCameraBadge extends StatelessWidget {
 
 class _RecordingIndicator extends StatelessWidget {
   final int seconds;
+  final bool isVoiceFollowPaused;
 
-  const _RecordingIndicator({required this.seconds});
+  const _RecordingIndicator({required this.seconds, required this.isVoiceFollowPaused});
 
   String get _formattedDuration {
     final m = seconds ~/ 60;
@@ -598,7 +632,7 @@ class _RecordingIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dotVisible = seconds.isEven;
-    return Container(
+    final pill = Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
       decoration: BoxDecoration(
         color: AppTheme.recordingRed.withValues(alpha: 0.92),
@@ -630,6 +664,18 @@ class _RecordingIndicator extends StatelessWidget {
           ),
         ],
       ),
+    );
+    if (!isVoiceFollowPaused) return pill;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        pill,
+        const SizedBox(height: 6),
+        Text(
+          'TIMED SCROLL WHILE RECORDING',
+          style: AppTheme.eyebrow.copyWith(fontSize: 8.5, letterSpacing: 1.6),
+        ),
+      ],
     );
   }
 }

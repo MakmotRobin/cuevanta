@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Cuevanta uses the camera to record your takes while you read.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Cuevanta records your voice with each take and can follow along as you speak.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Cuevanta listens to where you are in the script so it can scroll with your voice.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

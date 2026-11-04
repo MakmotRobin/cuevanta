@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import '../models/script.dart';
 import '../models/teleprompter_settings.dart';
+import '../voice/voice_follow_session.dart';
 import 'reading_guide_painter.dart';
 import '../theme/app_theme.dart';
 
@@ -18,6 +21,9 @@ class PrompterView extends StatefulWidget {
   final VoidCallback? onCountdownFinished;
   final Function(PrompterViewController controller)? onControllerReady;
 
+  /// When following, scrolling tracks the reader's voice instead of a fixed speed.
+  final VoiceFollowSession? voiceFollow;
+
   const PrompterView({
     super.key,
     required this.script,
@@ -27,6 +33,7 @@ class PrompterView extends StatefulWidget {
     this.onPlayStateChanged,
     this.onCountdownFinished,
     this.onControllerReady,
+    this.voiceFollow,
   });
 
   @override
@@ -44,6 +51,9 @@ class PrompterViewController {
   final bool Function() isPlaying;
   final double Function() currentSpeed;
 
+  /// Index of the line currently sitting on the reading guide.
+  final int Function() paragraphAtGuide;
+
   PrompterViewController({
     required this.play,
     required this.pause,
@@ -54,6 +64,7 @@ class PrompterViewController {
     required this.jumpToMarker,
     required this.isPlaying,
     required this.currentSpeed,
+    required this.paragraphAtGuide,
   });
 }
 
@@ -63,6 +74,9 @@ class _PrompterViewState extends State<PrompterView>
   static const double _maxSpeed = 150.0;
   static const double _keyboardSpeedStep = 3.0;
   static const double _bottomSpacerFraction = 0.7;
+
+  /// How quickly voice-follow closes the gap to the spoken line (per second).
+  static const double _voiceFollowResponsiveness = 5.0;
 
   late ScrollController _scrollController;
   late Ticker _ticker;
@@ -103,6 +117,7 @@ class _PrompterViewState extends State<PrompterView>
         jumpToMarker: _jumpToMarker,
         isPlaying: () => _isPlaying,
         currentSpeed: () => _speed,
+        paragraphAtGuide: _paragraphAtGuide,
       ),
     );
 
@@ -142,6 +157,11 @@ class _PrompterViewState extends State<PrompterView>
 
     if (delta <= 0) return;
 
+    if (_isFollowingVoice) {
+      _easeTowardSpokenLine(delta);
+      return;
+    }
+
     final maxScroll = _scrollController.position.maxScrollExtent;
     final newOffset = _scrollController.offset + (_speed * delta);
 
@@ -152,6 +172,51 @@ class _PrompterViewState extends State<PrompterView>
     } else {
       _scrollController.jumpTo(newOffset);
     }
+  }
+
+  bool get _isFollowingVoice => widget.voiceFollow?.isFollowing ?? false;
+
+  /// Moves part of the way to the spoken line each frame, so motion stays smooth
+  /// and simply stops when the reader pauses.
+  void _easeTowardSpokenLine(double deltaSeconds) {
+    final target = _spokenLineScrollOffset();
+    if (target == null) return;
+    final current = _scrollController.offset;
+    final fraction = 1 - math.exp(-deltaSeconds * _voiceFollowResponsiveness);
+    final next = (current + (target - current) * fraction)
+        .clamp(0.0, _scrollController.position.maxScrollExtent);
+    _scrollController.jumpTo(next);
+  }
+
+  /// Scroll offset that puts the line holding the current spoken word on the guide.
+  double? _spokenLineScrollOffset() {
+    final word = widget.voiceFollow?.currentWord;
+    final columnBox = _contentColumnKey.currentContext?.findRenderObject() as RenderBox?;
+    final paragraphContext = word == null ? null : _paragraphKeys[word.paragraphIndex].currentContext;
+    final textBox = paragraphContext == null ? null : _findRenderParagraph(paragraphContext as Element);
+    if (word == null || columnBox == null || textBox == null) return null;
+
+    final position = TextPosition(offset: word.charOffset);
+    final caretTop = textBox.getOffsetForCaret(position, Rect.zero).dy;
+    final lineHeight = textBox.getFullHeightForCaret(position);
+    final lineCenter = textBox.localToGlobal(Offset(0, caretTop + lineHeight / 2), ancestor: columnBox).dy;
+    return lineCenter - _topSpacerHeight;
+  }
+
+  static RenderParagraph? _findRenderParagraph(Element element) {
+    RenderParagraph? found;
+    void visit(Element child) {
+      if (found != null) return;
+      final renderObject = child.renderObject;
+      if (renderObject is RenderParagraph) {
+        found = renderObject;
+        return;
+      }
+      child.visitChildElements(visit);
+    }
+
+    element.visitChildElements(visit);
+    return found;
   }
 
   void _startCountdown() {
@@ -216,6 +281,7 @@ class _PrompterViewState extends State<PrompterView>
       _scrollController.jumpTo(0.0);
     }
     _lastElapsed = Duration.zero;
+    widget.voiceFollow?.restartFromTop();
   }
 
   void _updateSpeed(double newSpeed) {
@@ -226,7 +292,9 @@ class _PrompterViewState extends State<PrompterView>
   /// section's first line lands on it.
   void _jumpToMarker(int markerCharIndex) {
     if (!_scrollController.hasClients) return;
-    final markerBottomY = _paragraphBottomY(_paragraphIndexAt(markerCharIndex));
+    final paragraphIndex = _paragraphIndexAt(markerCharIndex);
+    widget.voiceFollow?.syncToParagraph(paragraphIndex);
+    final markerBottomY = _paragraphBottomY(paragraphIndex);
     if (markerBottomY == null) return;
 
     final guideBandTop = _topSpacerHeight - _bandHeight / 2;
@@ -236,6 +304,16 @@ class _PrompterViewState extends State<PrompterView>
     );
     _scrollController.jumpTo(target);
     _lastElapsed = Duration.zero;
+  }
+
+  int _paragraphAtGuide() {
+    if (!_scrollController.hasClients) return 0;
+    final guideY = _scrollController.offset + _topSpacerHeight;
+    for (var i = 0; i < _paragraphs.length; i++) {
+      final bottom = _paragraphBottomY(i);
+      if (bottom != null && bottom > guideY) return i;
+    }
+    return _paragraphs.length - 1;
   }
 
   int _paragraphIndexAt(int charIndex) {

@@ -7,6 +7,7 @@ import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/prompter_hud_controls.dart';
 import '../widgets/prompter_settings_sheet.dart';
+import '../voice/voice_follow_host.dart';
 import '../widgets/prompter_view.dart';
 
 class PrompterScreen extends StatefulWidget {
@@ -21,7 +22,7 @@ class PrompterScreen extends StatefulWidget {
   State<PrompterScreen> createState() => _PrompterScreenState();
 }
 
-class _PrompterScreenState extends State<PrompterScreen> {
+class _PrompterScreenState extends State<PrompterScreen> with VoiceFollowHost {
   static const Duration _autoHideDelay = Duration(seconds: 4);
   static const Duration _fadeDuration = Duration(milliseconds: 250);
 
@@ -48,6 +49,7 @@ class _PrompterScreenState extends State<PrompterScreen> {
     _settings = await _storageService.getSettings();
     _currentSpeed = widget.script.customSpeed ?? _settings.scrollSpeed;
     _currentFontSize = widget.script.customFontSize ?? _settings.fontSize;
+    prepareVoiceFollow(widget.script, _settings);
 
     if (mounted) {
       setState(() => _isLoading = false);
@@ -77,6 +79,9 @@ class _PrompterScreenState extends State<PrompterScreen> {
     if (playing) _scheduleControlsAutoHide();
   }
 
+  @override
+  int currentParagraphAtGuide() => _prompterController?.paragraphAtGuide() ?? 0;
+
   void _toggleMirror() {
     setState(() => _settings.mirrorHorizontal = !_settings.mirrorHorizontal);
     _storageService.saveSettings(_settings);
@@ -98,6 +103,7 @@ class _PrompterScreenState extends State<PrompterScreen> {
           });
           _prompterController?.setSpeed(updated.scrollSpeed);
           _prompterController?.setFontSize(updated.fontSize);
+          applyVoiceFollowSetting(widget.script, updated);
         },
       ),
     ).whenComplete(_scheduleControlsAutoHide);
@@ -106,6 +112,7 @@ class _PrompterScreenState extends State<PrompterScreen> {
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
+    disposeVoiceFollow();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
@@ -133,6 +140,8 @@ class _PrompterScreenState extends State<PrompterScreen> {
                 settings: _settings,
                 onControllerReady: (controller) => _prompterController = controller,
                 onPlayStateChanged: _handlePlayStateChanged,
+                onCountdownFinished: () => startVoiceFollow(_settings),
+                voiceFollow: voiceFollow,
               ),
             ),
             Positioned(
@@ -246,6 +255,8 @@ class _PrompterScreenState extends State<PrompterScreen> {
       },
       onToggleMirror: _toggleMirror,
       onOpenSettings: _openSettings,
+      onToggleVoiceFollow: () => toggleVoiceFollow(widget.script, _settings),
+      voiceFollowState: voiceFollow?.state,
     );
   }
 }

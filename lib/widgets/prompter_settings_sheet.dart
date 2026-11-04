@@ -111,7 +111,24 @@ class _PrompterSettingsSheetState extends State<PrompterSettingsSheet> {
   }
 
   List<Widget> _buildSpeedSection() => [
-        const _SectionTitle('Scroll speed'),
+        const _SectionTitle('Scrolling'),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Follow my voice', style: TextStyle(fontSize: 15)),
+          subtitle: const Text(
+            'Scrolls as you speak and waits when you pause. '
+            'While the camera records, timed scrolling takes over: '
+            'Android gives the microphone to the camera.',
+            style: TextStyle(fontSize: 12, height: 1.4, color: AppTheme.textMuted),
+          ),
+          value: _settings.followVoice,
+          onChanged: (value) => _update((s) => s.followVoice = value),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _settings.followVoice ? 'TIMED SPEED (USED WHILE RECORDING)' : 'SPEED',
+          style: AppTheme.eyebrow.copyWith(fontSize: 9, color: AppTheme.textSubtle),
+        ),
         _SliderRow(
           value: _settings.scrollSpeed,
           min: 10,

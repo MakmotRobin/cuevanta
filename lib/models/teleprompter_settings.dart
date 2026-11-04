@@ -35,6 +35,7 @@ class TeleprompterSettings {
   ScriptBoxArea boxArea;
   bool preferFrontCamera;
   bool enableHapticFeedback;
+  bool followVoice; // scroll with the reader's speech instead of a fixed speed
 
   TeleprompterSettings({
     this.fontSize = 28.0,
@@ -56,6 +57,7 @@ class TeleprompterSettings {
     this.boxArea = ScriptBoxArea.nearCameraTop,
     this.preferFrontCamera = true,
     this.enableHapticFeedback = true,
+    this.followVoice = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -79,6 +81,7 @@ class TeleprompterSettings {
       'boxArea': boxArea.index,
       'preferFrontCamera': preferFrontCamera,
       'enableHapticFeedback': enableHapticFeedback,
+      'followVoice': followVoice,
     };
   }
 
@@ -106,6 +109,7 @@ class TeleprompterSettings {
           (map['boxArea'] as int? ?? ScriptBoxArea.nearCameraTop.index).clamp(0, ScriptBoxArea.values.length - 1)],
       preferFrontCamera: map['preferFrontCamera'] as bool? ?? true,
       enableHapticFeedback: map['enableHapticFeedback'] as bool? ?? true,
+      followVoice: map['followVoice'] as bool? ?? false,
     );
   }
 
@@ -134,6 +138,7 @@ class TeleprompterSettings {
     ScriptBoxArea? boxArea,
     bool? preferFrontCamera,
     bool? enableHapticFeedback,
+    bool? followVoice,
   }) {
     return TeleprompterSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -155,6 +160,7 @@ class TeleprompterSettings {
       boxArea: boxArea ?? this.boxArea,
       preferFrontCamera: preferFrontCamera ?? this.preferFrontCamera,
       enableHapticFeedback: enableHapticFeedback ?? this.enableHapticFeedback,
+      followVoice: followVoice ?? this.followVoice,
     );
   }
 }
