@@ -15,6 +15,17 @@ enum ScriptBoxArea {
   fullscreen,
 }
 
+/// Vertical video resolution for studio takes (always recorded 9:16 portrait).
+enum RecordingQuality {
+  hd720('720p'),
+  fullHd1080('1080p'),
+  uhd4k('4K');
+
+  final String label;
+
+  const RecordingQuality(this.label);
+}
+
 class TeleprompterSettings {
   double fontSize;
   double lineSpacing;
@@ -32,9 +43,12 @@ class TeleprompterSettings {
   double overlayOpacity; // 0.0 (transparent) to 0.95 (opaque) in camera mode
   double textHorizontalMargin; // Horizontal padding in % (e.g., 0.1 = 10% on each side)
   bool autoRecordVideo; // Trigger recording when countdown completes
+  bool autoStopAtEnd; // Stop the take once the last line has been read
   ScriptBoxArea boxArea;
   bool preferFrontCamera;
   bool enableHapticFeedback;
+  bool followVoice; // scroll with the reader's speech instead of a fixed speed
+  RecordingQuality recordingQuality;
 
   TeleprompterSettings({
     this.fontSize = 28.0,
@@ -53,9 +67,12 @@ class TeleprompterSettings {
     this.overlayOpacity = 0.65,
     this.textHorizontalMargin = 24.0,
     this.autoRecordVideo = true,
+    this.autoStopAtEnd = true,
     this.boxArea = ScriptBoxArea.nearCameraTop,
     this.preferFrontCamera = true,
     this.enableHapticFeedback = true,
+    this.followVoice = false,
+    this.recordingQuality = RecordingQuality.fullHd1080,
   });
 
   Map<String, dynamic> toMap() {
@@ -76,9 +93,12 @@ class TeleprompterSettings {
       'overlayOpacity': overlayOpacity,
       'textHorizontalMargin': textHorizontalMargin,
       'autoRecordVideo': autoRecordVideo,
+      'autoStopAtEnd': autoStopAtEnd,
       'boxArea': boxArea.index,
       'preferFrontCamera': preferFrontCamera,
       'enableHapticFeedback': enableHapticFeedback,
+      'followVoice': followVoice,
+      'recordingQuality': recordingQuality.name,
     };
   }
 
@@ -102,10 +122,14 @@ class TeleprompterSettings {
       overlayOpacity: (map['overlayOpacity'] as num?)?.toDouble() ?? 0.65,
       textHorizontalMargin: (map['textHorizontalMargin'] as num?)?.toDouble() ?? 24.0,
       autoRecordVideo: map['autoRecordVideo'] as bool? ?? true,
+      autoStopAtEnd: map['autoStopAtEnd'] as bool? ?? true,
       boxArea: ScriptBoxArea.values[
           (map['boxArea'] as int? ?? ScriptBoxArea.nearCameraTop.index).clamp(0, ScriptBoxArea.values.length - 1)],
       preferFrontCamera: map['preferFrontCamera'] as bool? ?? true,
       enableHapticFeedback: map['enableHapticFeedback'] as bool? ?? true,
+      followVoice: map['followVoice'] as bool? ?? false,
+      recordingQuality: RecordingQuality.values.asNameMap()[map['recordingQuality']] ??
+          RecordingQuality.fullHd1080,
     );
   }
 
@@ -131,9 +155,12 @@ class TeleprompterSettings {
     double? overlayOpacity,
     double? textHorizontalMargin,
     bool? autoRecordVideo,
+    bool? autoStopAtEnd,
     ScriptBoxArea? boxArea,
     bool? preferFrontCamera,
     bool? enableHapticFeedback,
+    bool? followVoice,
+    RecordingQuality? recordingQuality,
   }) {
     return TeleprompterSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -152,9 +179,12 @@ class TeleprompterSettings {
       overlayOpacity: overlayOpacity ?? this.overlayOpacity,
       textHorizontalMargin: textHorizontalMargin ?? this.textHorizontalMargin,
       autoRecordVideo: autoRecordVideo ?? this.autoRecordVideo,
+      autoStopAtEnd: autoStopAtEnd ?? this.autoStopAtEnd,
       boxArea: boxArea ?? this.boxArea,
       preferFrontCamera: preferFrontCamera ?? this.preferFrontCamera,
       enableHapticFeedback: enableHapticFeedback ?? this.enableHapticFeedback,
+      followVoice: followVoice ?? this.followVoice,
+      recordingQuality: recordingQuality ?? this.recordingQuality,
     );
   }
 }

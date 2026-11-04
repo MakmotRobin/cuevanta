@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import '../models/recorded_video.dart';
+import '../services/storage_service.dart';
+import '../services/take_sharing.dart';
 import '../theme/app_theme.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _hasError = false;
   String? _errorMessage;
   bool _showControls = true;
+  late bool _isBest = widget.video.isBest;
 
   @override
   void initState() {
@@ -76,20 +78,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() => _showControls = true);
   }
 
-  void _shareVideo() {
-    final file = File(widget.video.filePath);
-    if (file.existsSync()) {
-      SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(widget.video.filePath)],
-          subject: 'Recorded take from ${widget.video.scriptTitle}',
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('File not found to share.')),
-      );
+  Future<void> _shareVideo() async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (!await TakeSharing.share([widget.video])) {
+      messenger.showSnackBar(const SnackBar(content: Text('This video file is no longer on this device.')));
     }
+  }
+
+  Future<void> _toggleBest() async {
+    await StorageService().toggleBestTake(widget.video.id);
+    if (mounted) setState(() => _isBest = !_isBest);
   }
 
   @override
@@ -103,11 +101,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Text(widget.video.scriptTitle),
+        title: Text(widget.video.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
-            icon: const Icon(Icons.share_outlined),
-            tooltip: 'Share Take',
+            icon: Icon(
+              _isBest ? Icons.star_rounded : Icons.star_outline_rounded,
+              color: _isBest ? AppTheme.gold : null,
+            ),
+            tooltip: _isBest ? 'Best take (tap to clear)' : 'Mark as best take',
+            onPressed: _toggleBest,
+          ),
+          IconButton(
+            icon: const Icon(Icons.ios_share_rounded),
+            tooltip: 'Share take',
             onPressed: _shareVideo,
           ),
         ],

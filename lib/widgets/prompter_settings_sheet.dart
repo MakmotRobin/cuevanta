@@ -111,7 +111,24 @@ class _PrompterSettingsSheetState extends State<PrompterSettingsSheet> {
   }
 
   List<Widget> _buildSpeedSection() => [
-        const _SectionTitle('Scroll speed'),
+        const _SectionTitle('Scrolling'),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Follow my voice', style: TextStyle(fontSize: 15)),
+          subtitle: const Text(
+            'Scrolls as you speak and waits when you pause. '
+            'While the camera records, timed scrolling takes over: '
+            'Android gives the microphone to the camera.',
+            style: TextStyle(fontSize: 12, height: 1.4, color: AppTheme.textMuted),
+          ),
+          value: _settings.followVoice,
+          onChanged: (value) => _update((s) => s.followVoice = value),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _settings.followVoice ? 'TIMED SPEED (USED WHILE RECORDING)' : 'SPEED',
+          style: AppTheme.eyebrow.copyWith(fontSize: 9, color: AppTheme.textSubtle),
+        ),
         _SliderRow(
           value: _settings.scrollSpeed,
           min: 10,
@@ -211,6 +228,19 @@ class _PrompterSettingsSheetState extends State<PrompterSettingsSheet> {
 
   List<Widget> _buildStudioSection() => [
         const _SectionTitle('Recording studio'),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 10),
+          child: Text(
+            'Vertical 9:16 at 30 fps, front camera by default.',
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          ),
+        ),
+        _SegmentedChoice<RecordingQuality>(
+          selected: _settings.recordingQuality,
+          options: {for (final quality in RecordingQuality.values) quality: (null, quality.label)},
+          onSelected: (quality) => _update((s) => s.recordingQuality = quality),
+        ),
+        const SizedBox(height: 8),
         _SliderRow(
           label: 'Backdrop',
           value: _settings.overlayOpacity,
@@ -232,7 +262,28 @@ class _PrompterSettingsSheetState extends State<PrompterSettingsSheet> {
       ];
 
   List<Widget> _buildCountdownSection() => [
-        const _SectionTitle('Countdown'),
+        const _SectionTitle('Countdown & takes'),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Record when the countdown ends', style: TextStyle(fontSize: 15)),
+          subtitle: const Text(
+            'Opening the studio counts down, then starts recording.',
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          ),
+          value: _settings.autoRecordVideo,
+          onChanged: (value) => _update((s) => s.autoRecordVideo = value),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Stop at the end of the script', style: TextStyle(fontSize: 15)),
+          subtitle: const Text(
+            'Ends the take a moment after your last line passes the guide.',
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          ),
+          value: _settings.autoStopAtEnd,
+          onChanged: (value) => _update((s) => s.autoStopAtEnd = value),
+        ),
+        const SizedBox(height: 8),
         _SegmentedChoice<int>(
           selected: _settings.countdownDuration,
           options: {
@@ -259,7 +310,7 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _SliderRow extends StatelessWidget {
-  static const double _labelWidth = 64;
+  static const double _labelWidth = 80;
   static const double _valueWidth = 72;
 
   final String? label;

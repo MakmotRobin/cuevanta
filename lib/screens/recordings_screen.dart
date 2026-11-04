@@ -1,12 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart';
 import '../models/recorded_video.dart';
+import '../models/take_library.dart';
 import '../services/storage_service.dart';
-import 'video_player_screen.dart';
+import '../services/take_sharing.dart';
 import '../theme/app_theme.dart';
+import '../widgets/gold_button.dart';
 import '../widgets/gold_ring_icon.dart';
+import 'video_player_screen.dart';
 
 class RecordingsScreen extends StatefulWidget {
   const RecordingsScreen({super.key});
@@ -36,27 +38,39 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     }
   }
 
-  void _playVideo(RecordedVideo video) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => VideoPlayerScreen(video: video),
-      ),
-    );
+  List<RecordedVideo> get _bestTakes => TakeLibrary.bestTakes(_recordings);
+
+  /// Takes grouped by script: most recently recorded script first, newest take first.
+  List<List<RecordedVideo>> get _takesByScript {
+    final groups = <String, List<RecordedVideo>>{};
+    for (final take in _recordings) {
+      groups.putIfAbsent(take.scriptId, () => []).add(take);
+    }
+    final ordered = groups.values.map((takes) => takes..sort((a, b) => b.takeNumber.compareTo(a.takeNumber))).toList()
+      ..sort((a, b) => _latest(b).compareTo(_latest(a)));
+    return ordered;
   }
 
-  void _shareVideo(RecordedVideo video) {
-    final file = File(video.filePath);
-    if (file.existsSync()) {
-      SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(video.filePath)],
-          subject: 'Recorded take from ${video.scriptTitle}',
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('File not found to share.')),
-      );
+  static DateTime _latest(List<RecordedVideo> takes) =>
+      takes.map((t) => t.recordedAt).reduce((a, b) => a.isAfter(b) ? a : b);
+
+  Future<void> _playVideo(RecordedVideo video) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => VideoPlayerScreen(video: video)),
+    );
+    _loadRecordings();
+  }
+
+  Future<void> _toggleBest(RecordedVideo video) async {
+    final updated = await _storageService.toggleBestTake(video.id);
+    if (mounted) setState(() => _recordings = updated);
+  }
+
+  Future<void> _share(List<RecordedVideo> takes) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final shared = await TakeSharing.share(takes);
+    if (!shared) {
+      messenger.showSnackBar(const SnackBar(content: Text('Those video files are no longer on this device.')));
     }
   }
 
@@ -64,9 +78,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.cardDark,
-        title: const Text('Delete Recording?'),
-        content: Text('Delete this take (${video.formattedDuration})?'),
+        title: const Text('Delete this take?'),
+        content: Text('${video.displayName} (${video.formattedDuration}) will be removed from this device.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -74,61 +87,67 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.recordingRed,
-                  foregroundColor: AppTheme.textPrimary,
-                ),
+              backgroundColor: AppTheme.recordingRed,
+              foregroundColor: AppTheme.textPrimary,
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Delete'),
           ),
         ],
       ),
     );
+    if (confirm != true) return;
 
-    if (confirm == true) {
-      try {
-        final file = File(video.filePath);
-        if (await file.exists()) {
-          await file.delete();
-        }
-      } catch (_) {}
-      await _storageService.deleteRecording(video.id);
-      _loadRecordings();
+    try {
+      final file = File(video.filePath);
+      if (await file.exists()) await file.delete();
+    } on FileSystemException catch (error) {
+      debugPrint('Could not delete ${video.filePath}: ${error.message}');
     }
+    await _storageService.deleteRecording(video.id);
+    _loadRecordings();
   }
 
   @override
   Widget build(BuildContext context) {
+    final bestTakes = _bestTakes;
     return Scaffold(
       appBar: AppBar(),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : CustomScrollView(
               slivers: [
-                SliverToBoxAdapter(child: _buildHeader()),
+                SliverToBoxAdapter(child: _buildHeader(bestTakes.length)),
+                if (bestTakes.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                      child: GoldButton(
+                        label: 'Share best takes (${bestTakes.length})',
+                        icon: Icons.ios_share_rounded,
+                        onPressed: () => _share(bestTakes),
+                      ),
+                    ),
+                  ),
                 if (_recordings.isEmpty)
                   SliverFillRemaining(hasScrollBody: false, child: _buildEmptyState())
                 else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-                    sliver: SliverList.separated(
-                      itemCount: _recordings.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) => _buildTakeCard(_recordings[index]),
-                    ),
-                  ),
+                  for (final takes in _takesByScript) ..._buildScriptGroup(takes),
+                const SliverToBoxAdapter(child: SizedBox(height: 32)),
               ],
             ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(int bestCount) {
     final takeLabel = _recordings.length == 1 ? 'TAKE' : 'TAKES';
+    final bestLabel = bestCount == 0 ? '' : '  ·  $bestCount BEST';
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${_recordings.length} $takeLabel', style: AppTheme.eyebrow),
+          Text('${_recordings.length} $takeLabel$bestLabel', style: AppTheme.eyebrow),
           const SizedBox(height: 10),
           const Text(
             'Recorded takes',
@@ -139,28 +158,54 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     );
   }
 
+  List<Widget> _buildScriptGroup(List<RecordedVideo> takes) {
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+          child: Text(
+            takes.first.scriptDisplayName.toUpperCase(),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTheme.eyebrow.copyWith(fontSize: 10, letterSpacing: 2, height: 1.5),
+          ),
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        sliver: SliverList.separated(
+          itemCount: takes.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 10),
+          itemBuilder: (context, index) => _buildTakeCard(takes[index]),
+        ),
+      ),
+    ];
+  }
+
   Widget _buildTakeCard(RecordedVideo video) {
-    final recordedAt = DateFormat('EEE d MMM · h:mm a').format(video.recordedAt);
+    final recordedAt = DateFormat('d MMM · h:mm a').format(video.recordedAt);
     return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+        side: BorderSide(color: video.isBest ? AppTheme.gold.withValues(alpha: 0.6) : AppTheme.border),
+      ),
       child: InkWell(
         onTap: () => _playVideo(video),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 4, 14),
+          padding: const EdgeInsets.fromLTRB(6, 10, 4, 10),
           child: Row(
             children: [
-              const GoldRingIcon(icon: Icons.play_arrow_rounded, size: 48),
-              const SizedBox(width: 14),
+              _BestTakeStar(isBest: video.isBest, onPressed: () => _toggleBest(video)),
+              const SizedBox(width: 4),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      video.scriptTitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.3),
+                      'Take ${video.takeNumber}',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text.rich(
                       TextSpan(
                         style: const TextStyle(fontSize: 12, color: AppTheme.textSubtle),
@@ -178,11 +223,13 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
               ),
               IconButton(
                 icon: const Icon(Icons.ios_share_rounded, size: 20),
+                visualDensity: VisualDensity.compact,
                 tooltip: 'Share take',
-                onPressed: () => _shareVideo(video),
+                onPressed: () => _share([video]),
               ),
               IconButton(
                 icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppTheme.textSubtle),
+                visualDensity: VisualDensity.compact,
                 tooltip: 'Delete take',
                 onPressed: () => _deleteRecording(video),
               ),
@@ -209,6 +256,28 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
             style: TextStyle(fontSize: 14, height: 1.5, color: AppTheme.textMuted),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Gold star when this is the script's chosen take; tap to choose or clear it.
+class _BestTakeStar extends StatelessWidget {
+  final bool isBest;
+  final VoidCallback onPressed;
+
+  const _BestTakeStar({required this.isBest, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: isBest ? 'Best take (tap to clear)' : 'Mark as best take',
+      visualDensity: VisualDensity.compact,
+      onPressed: onPressed,
+      icon: Icon(
+        isBest ? Icons.star_rounded : Icons.star_outline_rounded,
+        color: isBest ? AppTheme.gold : AppTheme.textSubtle,
+        size: 26,
       ),
     );
   }

@@ -33,4 +33,12 @@ Here is the first important tip for speaking clearly.''',
     expect(restored.fontSize, equals(settings.fontSize));
     expect(restored.countdownDuration, equals(settings.countdownDuration));
   });
+
+  test('Follow-my-voice is off by default and survives a save and load', () {
+    expect(TeleprompterSettings().followVoice, isFalse);
+
+    final restored = TeleprompterSettings.fromJson(TeleprompterSettings(followVoice: true).toJson());
+
+    expect(restored.followVoice, isTrue);
+  });
 }

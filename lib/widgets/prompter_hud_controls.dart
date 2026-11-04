@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/script.dart';
 import '../models/teleprompter_settings.dart';
 import '../theme/app_theme.dart';
+import '../voice/voice_follow_session.dart';
 import 'prompter_view.dart';
 
 /// Floating control panel shown over the prompter.
@@ -26,6 +27,10 @@ class PrompterHudControls extends StatelessWidget {
   final ValueChanged<double> onFontSizeChanged;
   final VoidCallback onToggleMirror;
   final VoidCallback onOpenSettings;
+  final VoidCallback onToggleVoiceFollow;
+
+  /// Null when voice-follow is switched off.
+  final VoiceFollowState? voiceFollowState;
 
   const PrompterHudControls({
     super.key,
@@ -39,6 +44,8 @@ class PrompterHudControls extends StatelessWidget {
     required this.onFontSizeChanged,
     required this.onToggleMirror,
     required this.onOpenSettings,
+    required this.onToggleVoiceFollow,
+    this.voiceFollowState,
   });
 
   @override
@@ -111,6 +118,7 @@ class PrompterHudControls extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        _buildVoiceFollowButton(),
         _HudIconButton(
           icon: Icons.replay_rounded,
           tooltip: 'Back to top',
@@ -130,6 +138,20 @@ class PrompterHudControls extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  Widget _buildVoiceFollowButton() {
+    final (icon, color, tooltip) = switch (voiceFollowState) {
+      null || VoiceFollowState.off => (Icons.mic_none_rounded, AppTheme.textBody, 'Follow my voice'),
+      VoiceFollowState.starting ||
+      VoiceFollowState.listening =>
+        (Icons.mic_rounded, AppTheme.gold, 'Following your voice (tap to turn off)'),
+      VoiceFollowState.suspended =>
+        (Icons.mic_off_rounded, AppTheme.goldDeep, 'Timed scroll while recording'),
+      VoiceFollowState.unavailable =>
+        (Icons.mic_off_rounded, AppTheme.recordingRed, 'Voice follow unavailable'),
+    };
+    return _HudIconButton(icon: icon, tooltip: tooltip, color: color, onTap: onToggleVoiceFollow);
   }
 
   Widget _buildSectionMenu() {
