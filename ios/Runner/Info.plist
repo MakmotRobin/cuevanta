@@ -6,6 +6,10 @@
 	<string>Cuevanta uses the camera to record your takes while you read.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cuevanta records your voice with each take and can follow along as you speak.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Cuevanta saves each take to a Cuevanta album in Photos so it is kept safely outside the app.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Cuevanta needs access to create its Cuevanta album in Photos for your takes.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Cuevanta listens to where you are in the script so it can scroll with your voice.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>

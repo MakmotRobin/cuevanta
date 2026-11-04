@@ -9,6 +9,7 @@ import '../models/recorded_video.dart';
 import '../models/script.dart';
 import '../models/teleprompter_settings.dart';
 import '../services/camera_service.dart';
+import '../services/device_video_library.dart';
 import '../services/recording_format.dart';
 import '../services/storage_service.dart';
 import '../services/take_sharing.dart';
@@ -36,6 +37,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
 
   final CameraService _cameraService = CameraService();
   final StorageService _storageService = StorageService();
+  final DeviceVideoLibrary _deviceLibrary = DeviceVideoLibrary.forThisDevice();
 
   late TeleprompterSettings _settings;
   bool _isLoading = true;
@@ -220,11 +222,29 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
         takeNumber: takeNumber,
       );
       await _storageService.addRecording(video);
+      unawaited(_copyTakeToDevice(video));
     }
 
     if (mounted) setState(() => _isSavingTake = false);
     await startVoiceFollow(_settings);
     return video;
+  }
+
+  /// Keeps a copy outside the app (Movies/Cuevanta) so takes survive an uninstall.
+  Future<void> _copyTakeToDevice(RecordedVideo video) async {
+    if (!_settings.saveTakesToDevice || !_deviceLibrary.isAvailable) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final outcome = await _deviceLibrary.save(video);
+    if (outcome == DeviceSaveOutcome.saved) {
+      await _storageService.markSavedToDevice({video.id});
+      return;
+    }
+    final reason = outcome == DeviceSaveOutcome.permissionDenied
+        ? 'permission was not given'
+        : 'something went wrong';
+    messenger.showSnackBar(SnackBar(
+      content: Text('Take kept in the app, but not copied to ${_deviceLibrary.locationLabel}: $reason.'),
+    ));
   }
 
   Future<void> _stopRecordingAndShowSummary() async {

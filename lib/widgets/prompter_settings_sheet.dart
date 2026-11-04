@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/teleprompter_settings.dart';
+import '../services/device_video_library.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 
@@ -20,6 +21,8 @@ class PrompterSettingsSheet extends StatefulWidget {
 class _PrompterSettingsSheetState extends State<PrompterSettingsSheet> {
   static const double _maxHeightFraction = 0.85;
   static const List<int> _countdownChoices = [0, 3, 5, 10];
+
+  final DeviceVideoLibrary _deviceLibrary = DeviceVideoLibrary.forThisDevice();
 
   late TeleprompterSettings _settings;
 
@@ -228,6 +231,20 @@ class _PrompterSettingsSheetState extends State<PrompterSettingsSheet> {
 
   List<Widget> _buildStudioSection() => [
         const _SectionTitle('Recording studio'),
+        if (_deviceLibrary.isAvailable)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              'Also save takes to ${_deviceLibrary.locationLabel}',
+              style: const TextStyle(fontSize: 15),
+            ),
+            subtitle: const Text(
+              'Shows them in your gallery and on your computer, and keeps them if the app is removed.',
+              style: TextStyle(fontSize: 12, height: 1.4, color: AppTheme.textMuted),
+            ),
+            value: _settings.saveTakesToDevice,
+            onChanged: (value) => _update((s) => s.saveTakesToDevice = value),
+          ),
         const Padding(
           padding: EdgeInsets.only(bottom: 10),
           child: Text(

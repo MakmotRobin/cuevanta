@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/recorded_video.dart';
 import '../models/take_library.dart';
+import '../services/device_video_library.dart';
 import '../services/storage_service.dart';
 import '../services/take_sharing.dart';
 import '../theme/app_theme.dart';
@@ -11,7 +12,10 @@ import '../widgets/gold_ring_icon.dart';
 import 'video_player_screen.dart';
 
 class RecordingsScreen extends StatefulWidget {
-  const RecordingsScreen({super.key});
+  /// Where takes are copied outside the app; defaults to this phone's.
+  final DeviceVideoLibrary? deviceLibrary;
+
+  const RecordingsScreen({super.key, this.deviceLibrary});
 
   @override
   State<RecordingsScreen> createState() => _RecordingsScreenState();
@@ -21,6 +25,10 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   final StorageService _storageService = StorageService();
   List<RecordedVideo> _recordings = [];
   bool _isLoading = true;
+  late final DeviceVideoLibrary _deviceLibrary = widget.deviceLibrary ?? DeviceVideoLibrary.forThisDevice();
+
+  /// Progress while copying older takes, e.g. (2, 5); null when idle.
+  (int, int)? _copyProgress;
 
   @override
   void initState() {
@@ -39,6 +47,35 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   }
 
   List<RecordedVideo> get _bestTakes => TakeLibrary.bestTakes(_recordings);
+
+  /// Takes that only exist inside the app (and whose files are still here).
+  List<RecordedVideo> get _takesOnlyInApp => _recordings
+      .where((take) => !take.isSavedToDevice && File(take.filePath).existsSync())
+      .toList();
+
+  Future<void> _copyTakesToDevice(List<RecordedVideo> takes) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final copied = <String>{};
+    var permissionDenied = false;
+    for (var i = 0; i < takes.length && !permissionDenied; i++) {
+      setState(() => _copyProgress = (i + 1, takes.length));
+      final outcome = await _deviceLibrary.save(takes[i]);
+      if (outcome == DeviceSaveOutcome.saved) copied.add(takes[i].id);
+      permissionDenied = outcome == DeviceSaveOutcome.permissionDenied;
+    }
+    final updated = await _storageService.markSavedToDevice(copied);
+    if (!mounted) return;
+    setState(() {
+      _recordings = updated;
+      _copyProgress = null;
+    });
+    final failed = takes.length - copied.length;
+    messenger.showSnackBar(SnackBar(
+      content: Text(failed == 0
+          ? 'Copied ${copied.length} to ${_deviceLibrary.locationLabel}'
+          : 'Copied ${copied.length}; $failed could not be copied${permissionDenied ? ' (permission not given)' : ''}.'),
+    ));
+  }
 
   /// Takes grouped by script: most recently recorded script first, newest take first.
   List<List<RecordedVideo>> get _takesByScript {
@@ -79,7 +116,10 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete this take?'),
-        content: Text('${video.displayName} (${video.formattedDuration}) will be removed from this device.'),
+        content: Text(video.isSavedToDevice
+            ? '${video.displayName} will be removed from Cuevanta. '
+                'The copy in ${_deviceLibrary.locationLabel} is kept.'
+            : '${video.displayName} (${video.formattedDuration}) will be removed from this device.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -118,6 +158,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
           : CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(child: _buildHeader(bestTakes.length)),
+                if (_deviceLibrary.isAvailable && _takesOnlyInApp.isNotEmpty)
+                  SliverToBoxAdapter(child: _buildCopyToDeviceBanner(_takesOnlyInApp)),
                 if (bestTakes.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -215,6 +257,14 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                             style: const TextStyle(color: AppTheme.goldLight, fontWeight: FontWeight.w600),
                           ),
                           TextSpan(text: '   ${video.formattedSize}   $recordedAt'),
+                          if (video.isSavedToDevice)
+                            const WidgetSpan(
+                              alignment: PlaceholderAlignment.middle,
+                              child: Padding(
+                                padding: EdgeInsets.only(left: 8),
+                                child: Icon(Icons.download_done_rounded, size: 14, color: AppTheme.gold),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -236,6 +286,44 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildCopyToDeviceBanner(List<RecordedVideo> takesOnlyInApp) {
+    final progress = _copyProgress;
+    final noun = takesOnlyInApp.length == 1 ? 'take is' : 'takes are';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+      decoration: BoxDecoration(
+        color: AppTheme.cardDark,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+        border: Border.all(color: AppTheme.gold.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.shield_outlined, color: AppTheme.gold),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              progress == null
+                  ? '${takesOnlyInApp.length} $noun only inside Cuevanta and would be lost if the app is removed.'
+                  : 'Copying ${progress.$1} of ${progress.$2} to ${_deviceLibrary.locationLabel}…',
+              style: const TextStyle(fontSize: 13, height: 1.4, color: AppTheme.textBody),
+            ),
+          ),
+          if (progress == null)
+            TextButton(
+              onPressed: () => _copyTakesToDevice(takesOnlyInApp),
+              child: const Text('Save copies'),
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
+        ],
       ),
     );
   }

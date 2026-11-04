@@ -49,6 +49,7 @@ class TeleprompterSettings {
   bool enableHapticFeedback;
   bool followVoice; // scroll with the reader's speech instead of a fixed speed
   RecordingQuality recordingQuality;
+  bool saveTakesToDevice; // also copy each take to Movies/Cuevanta (Photos on iOS)
 
   TeleprompterSettings({
     this.fontSize = 28.0,
@@ -73,6 +74,7 @@ class TeleprompterSettings {
     this.enableHapticFeedback = true,
     this.followVoice = false,
     this.recordingQuality = RecordingQuality.fullHd1080,
+    this.saveTakesToDevice = true,
   });
 
   Map<String, dynamic> toMap() {
@@ -99,6 +101,7 @@ class TeleprompterSettings {
       'enableHapticFeedback': enableHapticFeedback,
       'followVoice': followVoice,
       'recordingQuality': recordingQuality.name,
+      'saveTakesToDevice': saveTakesToDevice,
     };
   }
 
@@ -130,6 +133,7 @@ class TeleprompterSettings {
       followVoice: map['followVoice'] as bool? ?? false,
       recordingQuality: RecordingQuality.values.asNameMap()[map['recordingQuality']] ??
           RecordingQuality.fullHd1080,
+      saveTakesToDevice: map['saveTakesToDevice'] as bool? ?? true,
     );
   }
 
@@ -161,6 +165,7 @@ class TeleprompterSettings {
     bool? enableHapticFeedback,
     bool? followVoice,
     RecordingQuality? recordingQuality,
+    bool? saveTakesToDevice,
   }) {
     return TeleprompterSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -185,6 +190,7 @@ class TeleprompterSettings {
       enableHapticFeedback: enableHapticFeedback ?? this.enableHapticFeedback,
       followVoice: followVoice ?? this.followVoice,
       recordingQuality: recordingQuality ?? this.recordingQuality,
+      saveTakesToDevice: saveTakesToDevice ?? this.saveTakesToDevice,
     );
   }
 }

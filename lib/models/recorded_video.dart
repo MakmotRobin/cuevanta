@@ -15,6 +15,9 @@ class RecordedVideo {
   /// The take chosen for editing; at most one per script.
   final bool isBest;
 
+  /// A copy is in the phone's public videos (Movies/Cuevanta or the Photos album).
+  final bool isSavedToDevice;
+
   RecordedVideo({
     required this.id,
     required this.filePath,
@@ -25,6 +28,7 @@ class RecordedVideo {
     required this.fileSizeBytes,
     this.takeNumber = 1,
     this.isBest = false,
+    this.isSavedToDevice = false,
   });
 
   /// "03 · Glasses that read silent words · take 2"
@@ -51,7 +55,7 @@ class RecordedVideo {
     return '${(fileSizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
-  RecordedVideo copyWith({int? takeNumber, bool? isBest}) {
+  RecordedVideo copyWith({int? takeNumber, bool? isBest, bool? isSavedToDevice}) {
     return RecordedVideo(
       id: id,
       filePath: filePath,
@@ -62,6 +66,7 @@ class RecordedVideo {
       fileSizeBytes: fileSizeBytes,
       takeNumber: takeNumber ?? this.takeNumber,
       isBest: isBest ?? this.isBest,
+      isSavedToDevice: isSavedToDevice ?? this.isSavedToDevice,
     );
   }
 
@@ -76,6 +81,7 @@ class RecordedVideo {
       'fileSizeBytes': fileSizeBytes,
       'takeNumber': takeNumber,
       'isBest': isBest,
+      'isSavedToDevice': isSavedToDevice,
     };
   }
 
@@ -92,6 +98,7 @@ class RecordedVideo {
       fileSizeBytes: map['fileSizeBytes'] as int? ?? 0,
       takeNumber: map['takeNumber'] as int? ?? 0,
       isBest: map['isBest'] as bool? ?? false,
+      isSavedToDevice: map['isSavedToDevice'] as bool? ?? false,
     );
   }
 

@@ -148,6 +148,16 @@ class StorageService {
     return updated;
   }
 
+  /// Records that these takes now have a copy in the phone's public videos.
+  Future<List<RecordedVideo>> markSavedToDevice(Set<String> ids) async {
+    final updated = [
+      for (final take in await getRecordings())
+        ids.contains(take.id) ? take.copyWith(isSavedToDevice: true) : take,
+    ];
+    await _saveRecordings(updated);
+    return updated;
+  }
+
   Future<void> _saveRecordings(List<RecordedVideo> recordings) async {
     await init();
     await _prefs?.setStringList(_keyRecordings, recordings.map((v) => v.toJson()).toList());
