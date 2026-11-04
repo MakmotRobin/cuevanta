@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import '../models/recorded_video.dart';
+import '../theme/app_theme.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
   final RecordedVideo video;
@@ -119,7 +120,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.error_outline, size: 56, color: Color(0xFFEF4444)),
+                      const Icon(Icons.error_outline, size: 56, color: AppTheme.recordingRed),
                       const SizedBox(height: 16),
                       const Text(
                         'Unable to play video',
@@ -133,14 +134,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       Text(
                         _errorMessage ?? 'Unknown error occurred.',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                        style: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
                       ),
                     ],
                   ),
                 ),
               )
             : !_isInitialized
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)))
+                ? const Center(child: CircularProgressIndicator(color: AppTheme.gold))
                 : GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () {
@@ -191,9 +192,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                 vertical: 12,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xE60F172A),
+                                color: AppTheme.hudBackground,
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: const Color(0xFF334155)),
+                                border: Border.all(color: AppTheme.border),
                               ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
@@ -203,8 +204,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                     _controller!,
                                     allowScrubbing: true,
                                     colors: const VideoProgressColors(
-                                      playedColor: Color(0xFF6366F1),
-                                      bufferedColor: Color(0xFF334155),
+                                      playedColor: AppTheme.gold,
+                                      bufferedColor: AppTheme.border,
                                       backgroundColor: Colors.white24,
                                     ),
                                     padding: const EdgeInsets.symmetric(vertical: 8),

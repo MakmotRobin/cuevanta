@@ -258,13 +258,13 @@ class _MirrorBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.amber.withValues(alpha: 0.2),
+        color: AppTheme.gold.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber),
+        border: Border.all(color: AppTheme.gold),
       ),
       child: const Text(
         'MIRROR',
-        style: TextStyle(color: Colors.amber, fontSize: 10, fontWeight: FontWeight.bold),
+        style: TextStyle(color: AppTheme.gold, fontSize: 10, fontWeight: FontWeight.bold),
       ),
     );
   }

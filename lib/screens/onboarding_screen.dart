@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cuevanta_logo.dart';
+import '../widgets/gold_button.dart';
+import '../widgets/gold_ring_icon.dart';
 
 class _OnboardingPage {
   final IconData icon;
@@ -97,9 +99,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             const SizedBox(height: 28),
             Padding(
               padding: const EdgeInsets.fromLTRB(28, 0, 28, 24),
-              child: _GoldButton(
-                label: _isLastPage ? 'Get started' : 'Continue',
-                onPressed: _isLastPage ? _finishOnboarding : _showNextPage,
+              child: SizedBox(
+                width: double.infinity,
+                child: GoldButton(
+                  label: _isLastPage ? 'Get started' : 'Continue',
+                  onPressed: _isLastPage ? _finishOnboarding : _showNextPage,
+                ),
               ),
             ),
           ],
@@ -145,7 +150,7 @@ class _OnboardingPageView extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _GoldRingIcon(icon: page.icon),
+          GoldRingIcon(icon: page.icon),
           const SizedBox(height: 48),
           Text(
             page.eyebrow,
@@ -178,28 +183,6 @@ class _OnboardingPageView extends StatelessWidget {
   }
 }
 
-class _GoldRingIcon extends StatelessWidget {
-  final IconData icon;
-
-  const _GoldRingIcon({required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 84,
-      height: 84,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: AppTheme.gold.withValues(alpha: 0.55), width: 1.2),
-        gradient: RadialGradient(
-          colors: [AppTheme.gold.withValues(alpha: 0.14), Colors.transparent],
-        ),
-      ),
-      child: Icon(icon, color: AppTheme.goldLight, size: 34),
-    );
-  }
-}
-
 class _PageDots extends StatelessWidget {
   final int count;
   final int current;
@@ -223,38 +206,6 @@ class _PageDots extends StatelessWidget {
             ),
           ),
       ],
-    );
-  }
-}
-
-class _GoldButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onPressed;
-
-  const _GoldButton({required this.label, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [AppTheme.goldLight, AppTheme.gold, AppTheme.goldDeep]),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: TextButton(
-          onPressed: onPressed,
-          style: TextButton.styleFrom(
-            foregroundColor: AppTheme.ink,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          ),
-          child: Text(
-            label.toUpperCase(),
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: 2.5),
-          ),
-        ),
-      ),
     );
   }
 }

@@ -7,6 +7,8 @@ import '../models/script.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cuevanta_logo.dart';
+import '../widgets/gold_button.dart';
+import '../widgets/gold_ring_icon.dart';
 import '../widgets/prompter_settings_sheet.dart';
 import 'prompter_screen.dart';
 import 'recordings_screen.dart';
@@ -21,8 +23,6 @@ class ScriptListScreen extends StatefulWidget {
 }
 
 class _ScriptListScreenState extends State<ScriptListScreen> {
-  static const int _maxMarkerChips = 4;
-
   final StorageService _storageService = StorageService();
   final TextEditingController _searchController = TextEditingController();
   List<Script> _allScripts = [];
@@ -164,19 +164,59 @@ class _ScriptListScreenState extends State<ScriptListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 20,
-        title: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CuevantaAppIcon(),
-            SizedBox(width: 10),
-            Flexible(child: Text('Cuevanta', overflow: TextOverflow.ellipsis)),
-          ],
-        ),
-        actions: [
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: GoldButton(
+        label: 'New script',
+        icon: Icons.add_rounded,
+        onPressed: () => _pushAndReload(const ScriptEditorScreen()),
+      ),
+      body: SafeArea(
+        bottom: false,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadScripts,
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(child: _buildBrandBar()),
+                    SliverToBoxAdapter(child: _buildHeader()),
+                    SliverToBoxAdapter(child: _buildSearchField()),
+                    if (_filteredScripts.isEmpty)
+                      SliverFillRemaining(hasScrollBody: false, child: _buildEmptyState())
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+                        sliver: SliverList.separated(
+                          itemCount: _filteredScripts.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 14),
+                          itemBuilder: (context, index) =>
+                              _buildScriptCard(_filteredScripts[index]),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildBrandBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 12, 0),
+      child: Row(
+        children: [
+          const CuevantaMark(size: 26),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: CuevantaWordmark(fontSize: 12),
+            ),
+          ),
           IconButton(
-            icon: const Icon(Icons.upload_file_rounded),
+            icon: const Icon(Icons.file_download_outlined),
             tooltip: 'Import READ file',
             onPressed: _importReadFile,
           ),
@@ -190,67 +230,64 @@ class _ScriptListScreenState extends State<ScriptListScreen> {
             tooltip: 'Prompter settings',
             onPressed: _openGlobalSettings,
           ),
-          const SizedBox(width: 4),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _pushAndReload(const ScriptEditorScreen()),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('New Script'),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadScripts,
-              child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(child: _buildLibrarySummary()),
-                  SliverToBoxAdapter(child: _buildSearchField()),
-                  if (_filteredScripts.isEmpty)
-                    SliverFillRemaining(hasScrollBody: false, child: _buildEmptyState())
-                  else
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
-                      sliver: SliverList.separated(
-                        itemCount: _filteredScripts.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) =>
-                            _buildScriptCard(_filteredScripts[index]),
-                      ),
-                    ),
-                ],
-              ),
-            ),
     );
   }
 
-  Widget _buildLibrarySummary() {
+  Widget _buildHeader() {
     final totalSeconds =
         _allScripts.fold<int>(0, (sum, s) => sum + s.estimatedReadingTimeSeconds());
     final totalMinutes = (totalSeconds / 60).ceil();
-    final scriptLabel = _allScripts.length == 1 ? 'script' : 'scripts';
+    final scriptLabel = _allScripts.length == 1 ? 'SCRIPT' : 'SCRIPTS';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-      child: Text(
-        '${_allScripts.length} $scriptLabel  ·  ~$totalMinutes min of reading',
-        style: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${_allScripts.length} $scriptLabel  ·  $totalMinutes MIN', style: AppTheme.eyebrow),
+          const SizedBox(height: 10),
+          const Text(
+            'Your scripts',
+            style: TextStyle(
+              fontSize: 34,
+              fontWeight: FontWeight.w300,
+              letterSpacing: -0.5,
+              height: 1.15,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildSearchField() {
+    final pill = BorderRadius.circular(30);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       child: TextField(
         controller: _searchController,
         onChanged: _updateSearch,
         textInputAction: TextInputAction.search,
+        style: const TextStyle(fontSize: 15),
         decoration: InputDecoration(
-          hintText: 'Search scripts',
+          hintText: 'Search',
           isDense: true,
-          prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textMuted),
+          border: OutlineInputBorder(
+            borderRadius: pill,
+            borderSide: const BorderSide(color: AppTheme.border),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: pill,
+            borderSide: const BorderSide(color: AppTheme.border),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: pill,
+            borderSide: BorderSide(color: AppTheme.gold.withValues(alpha: 0.6)),
+          ),
+          prefixIcon: const Icon(Icons.search_rounded, size: 20),
           suffixIcon: _searchQuery.isEmpty
               ? null
               : IconButton(
@@ -264,13 +301,11 @@ class _ScriptListScreenState extends State<ScriptListScreen> {
   }
 
   Widget _buildScriptCard(Script script) {
-    final markers = script.markers;
-
     return Card(
       child: InkWell(
         onTap: () => _pushAndReload(ScriptEditorScreen(script: script)),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 8, 12),
+          padding: const EdgeInsets.fromLTRB(20, 18, 8, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -279,13 +314,14 @@ class _ScriptListScreenState extends State<ScriptListScreen> {
                 children: [
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.only(top: 6),
+                      padding: const EdgeInsets.only(top: 4),
                       child: Text(
                         script.title,
                         style: const TextStyle(
                           fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          height: 1.3,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                          color: AppTheme.textPrimary,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -295,46 +331,56 @@ class _ScriptListScreenState extends State<ScriptListScreen> {
                   _buildScriptMenu(script),
                 ],
               ),
+              const SizedBox(height: 4),
               Padding(
-                padding: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.only(right: 12),
                 child: Text(
                   _previewText(script),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.45),
+                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.55),
                 ),
               ),
-              if (markers.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final marker in markers.take(_maxMarkerChips)) _MarkerChip(marker.title),
-                    if (markers.length > _maxMarkerChips)
-                      _MarkerChip('+${markers.length - _maxMarkerChips}'),
-                  ],
+              if (script.markers.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Text(
+                    _markerSummary(script),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.eyebrow.copyWith(fontSize: 9.5, letterSpacing: 1.8),
+                  ),
                 ),
               ],
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
+              const Padding(
+                padding: EdgeInsets.only(right: 12),
+                child: Divider(),
+              ),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(child: _buildScriptStats(script)),
-                  IconButton.filledTonal(
+                  _CircleAction(
                     tooltip: 'Prompt fullscreen',
-                    icon: const Icon(Icons.slideshow_rounded, size: 20),
                     onPressed: () => _pushAndReload(PrompterScreen(script: script)),
+                    child: const Icon(Icons.play_arrow_rounded, color: AppTheme.gold, size: 22),
                   ),
-                  const SizedBox(width: 4),
-                  IconButton.filled(
-                    style: IconButton.styleFrom(
-                      backgroundColor: AppTheme.recordingRed,
-                      foregroundColor: Colors.white,
-                    ),
+                  const SizedBox(width: 10),
+                  _CircleAction(
                     tooltip: 'Record with prompter',
-                    icon: const Icon(Icons.videocam_rounded, size: 20),
                     onPressed: () => _pushAndReload(StudioRecordingScreen(script: script)),
+                    child: Container(
+                      width: 14,
+                      height: 14,
+                      decoration: const BoxDecoration(
+                        color: AppTheme.recordingRed,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
                   ),
+                  const SizedBox(width: 12),
                 ],
               ),
             ],
@@ -351,37 +397,28 @@ class _ScriptListScreenState extends State<ScriptListScreen> {
     return collapsed.isEmpty ? 'Empty script — tap to start writing' : collapsed;
   }
 
+  String _markerSummary(Script script) =>
+      script.markers.map((m) => m.title.toUpperCase()).join('  ·  ');
+
   Widget _buildScriptStats(Script script) {
-    const subtleStyle = TextStyle(fontSize: 12, color: AppTheme.textSubtle);
-    return Wrap(
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 10,
-      runSpacing: 4,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.schedule_rounded, size: 14, color: AppTheme.primaryLight),
-            const SizedBox(width: 4),
-            Text(
-              script.formattedEstimatedTime(),
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.primaryLight,
-              ),
-            ),
-          ],
-        ),
-        Text('${script.wordCount} words', style: subtleStyle),
-        Text(DateFormat('MMM d').format(script.updatedAt), style: subtleStyle),
-      ],
+    final updated = DateFormat('MMM d').format(script.updatedAt);
+    return Text.rich(
+      TextSpan(
+        style: const TextStyle(fontSize: 12, color: AppTheme.textSubtle, letterSpacing: 0.2),
+        children: [
+          TextSpan(
+            text: script.formattedEstimatedTime(),
+            style: const TextStyle(color: AppTheme.goldLight, fontWeight: FontWeight.w600),
+          ),
+          TextSpan(text: '   ${script.wordCount} words   $updated'),
+        ],
+      ),
     );
   }
 
   Widget _buildScriptMenu(Script script) {
     return PopupMenuButton<VoidCallback>(
-      icon: const Icon(Icons.more_vert_rounded, color: AppTheme.textMuted),
+      icon: const Icon(Icons.more_horiz_rounded, color: AppTheme.textSubtle),
       tooltip: 'More',
       onSelected: (action) => action(),
       itemBuilder: (context) => [
@@ -409,14 +446,14 @@ class _ScriptListScreenState extends State<ScriptListScreen> {
     required IconData icon,
     required String label,
     required VoidCallback action,
-    Color color = Colors.white,
+    Color color = AppTheme.textPrimary,
   }) {
     return PopupMenuItem<VoidCallback>(
       value: action,
       child: Row(
         children: [
           Icon(icon, size: 18, color: color.withValues(alpha: 0.85)),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Text(label, style: TextStyle(color: color)),
         ],
       ),
@@ -426,73 +463,65 @@ class _ScriptListScreenState extends State<ScriptListScreen> {
   Widget _buildEmptyState() {
     final isSearching = _searchQuery.trim().isNotEmpty;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 24, 32, 96),
+      padding: const EdgeInsets.fromLTRB(32, 8, 32, 140),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              isSearching ? Icons.search_off_rounded : Icons.description_outlined,
-              size: 44,
-              color: AppTheme.primaryLight,
-            ),
+          GoldRingIcon(
+            icon: isSearching ? Icons.search_off_rounded : Icons.auto_stories_outlined,
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 24),
           Text(
-            isSearching ? 'No matches' : 'No scripts yet',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            isSearching ? 'No matches' : 'Nothing to read yet',
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w300),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             isSearching
                 ? 'Nothing matches "${_searchQuery.trim()}".'
-                : 'Tap "New Script" to write your first one.',
+                : 'Write a new script, or import this week\'s READ file.',
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 14, color: AppTheme.textMuted),
+            style: const TextStyle(fontSize: 14, height: 1.5, color: AppTheme.textMuted),
           ),
-          if (isSearching) ...[
-            const SizedBox(height: 12),
-            TextButton(onPressed: _clearSearch, child: const Text('Clear search')),
-          ] else ...[
-            const SizedBox(height: 16),
+          const SizedBox(height: 20),
+          if (isSearching)
+            TextButton(onPressed: _clearSearch, child: const Text('Clear search'))
+          else
             OutlinedButton.icon(
               onPressed: _importReadFile,
-              icon: const Icon(Icons.upload_file_rounded),
-              label: const Text('Import a READ file'),
+              icon: const Icon(Icons.file_download_outlined, size: 18),
+              label: const Text('IMPORT READ FILE'),
             ),
-          ],
         ],
       ),
     );
   }
 }
 
-class _MarkerChip extends StatelessWidget {
-  final String label;
+/// Quiet circular action with a hairline gold ring.
+class _CircleAction extends StatelessWidget {
+  final String tooltip;
+  final VoidCallback onPressed;
+  final Widget child;
 
-  const _MarkerChip(this.label);
+  const _CircleAction({required this.tooltip, required this.onPressed, required this.child});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.amber.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.amber.withValues(alpha: 0.35)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-          color: Colors.amberAccent,
-          letterSpacing: 0.4,
+    return Tooltip(
+      message: tooltip,
+      child: InkResponse(
+        onTap: onPressed,
+        radius: 26,
+        child: Container(
+          width: 42,
+          height: 42,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: AppTheme.gold.withValues(alpha: 0.35)),
+          ),
+          child: child,
         ),
       ),
     );

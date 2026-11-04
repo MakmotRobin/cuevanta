@@ -479,7 +479,7 @@ class _CameraUnavailableView extends StatelessWidget {
       decoration: const BoxDecoration(
         gradient: RadialGradient(
           radius: 1.2,
-          colors: [AppTheme.cardDark, Color(0xFF0A0F1D)],
+          colors: [AppTheme.cardDark, AppTheme.ink],
         ),
       ),
       alignment: const Alignment(0, 0.35),
@@ -562,17 +562,17 @@ class _LookAtCameraBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.6)),
+        border: Border.all(color: AppTheme.goldLight.withValues(alpha: 0.6)),
       ),
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.arrow_upward_rounded, color: Colors.amberAccent, size: 14),
+          Icon(Icons.arrow_upward_rounded, color: AppTheme.goldLight, size: 14),
           SizedBox(width: 4),
           Text(
             'LOOK AT LENS',
             style: TextStyle(
-              color: Colors.amberAccent,
+              color: AppTheme.goldLight,
               fontSize: 11,
               fontWeight: FontWeight.bold,
               letterSpacing: 0.8,
