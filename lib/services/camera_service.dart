@@ -15,6 +15,7 @@ class CameraService {
   bool _isRecording = false;
   bool _isSimulated = false; // Fallback for emulator / environments without physical cameras
   String? _errorMessage;
+  bool _isPermissionDenied = false;
   int _selectedCameraIndex = 0;
 
   bool get isInitialized => _isInitialized && _controller != null && _controller!.value.isInitialized;
@@ -22,6 +23,8 @@ class CameraService {
   bool get isSimulated => _isSimulated;
   cam.CameraController? get controller => _controller;
   String? get errorMessage => _errorMessage;
+  bool get isPermissionDenied => _isPermissionDenied;
+  bool get canSwitchCamera => _availableCameras.length > 1;
   List<cam.CameraDescription> get availableCamerasList => _availableCameras;
   bool get isFrontCamera =>
       _availableCameras.isNotEmpty &&
@@ -30,22 +33,20 @@ class CameraService {
   /// Initialize camera with requested lens direction (defaults to front for selfie teleprompting)
   Future<bool> initialize({bool preferFront = true}) async {
     _errorMessage = null;
+    _isPermissionDenied = false;
 
-    // Check permissions on mobile platforms
-    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-      final camStatus = await Permission.camera.request();
-      final micStatus = await Permission.microphone.request();
-
-      if (camStatus.isPermanentlyDenied || micStatus.isPermanentlyDenied) {
-        _errorMessage = 'Camera and Microphone permissions are required to record video.';
-        _isSimulated = true;
-        return false;
-      }
+    if (!await _requestCapturePermissions()) {
+      _errorMessage = 'Camera and microphone access is needed to record video.';
+      _isPermissionDenied = true;
+      _isSimulated = true;
+      _isInitialized = true;
+      return false;
     }
 
     try {
       _availableCameras = await cam.availableCameras();
       if (_availableCameras.isEmpty) {
+        _errorMessage = 'No camera found on this device.';
         _isSimulated = true;
         _isInitialized = true;
         return true;
@@ -72,12 +73,21 @@ class CameraService {
       return true;
     } catch (e) {
       debugPrint('Camera initialization error: $e');
-      _errorMessage = e.toString();
+      _errorMessage = 'Camera unavailable on this device.';
       _isSimulated = true;
       _isInitialized = true;
       return false;
     }
   }
+
+  /// Returns true when camera + microphone may be used (always true off mobile).
+  Future<bool> _requestCapturePermissions() async {
+    if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) return true;
+    final statuses = await [Permission.camera, Permission.microphone].request();
+    return statuses.values.every((status) => status.isGranted || status.isLimited);
+  }
+
+  Future<void> openPermissionSettings() => openAppSettings();
 
   Future<void> _setupController(cam.CameraDescription description) async {
     final oldController = _controller;
@@ -98,19 +108,15 @@ class CameraService {
 
   /// Switch between front and rear cameras
   Future<void> toggleCamera() async {
-    if (_availableCameras.length < 2) return;
+    if (!canSwitchCamera || _isRecording) return;
     _selectedCameraIndex = (_selectedCameraIndex + 1) % _availableCameras.length;
     await _setupController(_availableCameras[_selectedCameraIndex]);
   }
 
-  /// Start video recording
+  /// Start video recording. Returns false when no real camera is available.
   Future<bool> startRecording() async {
     if (_isRecording) return true;
-
-    if (_isSimulated || _controller == null || !_controller!.value.isInitialized) {
-      _isRecording = true;
-      return true;
-    }
+    if (_isSimulated || !isInitialized) return false;
 
     try {
       await _controller!.startVideoRecording();
@@ -142,19 +148,7 @@ class CameraService {
   Future<File?> stopRecording() async {
     if (!_isRecording) return null;
     _isRecording = false;
-
-    if (_isSimulated || _controller == null || !_controller!.value.isInitialized) {
-      // In simulated mode, create a dummy placeholder file in documents
-      try {
-        final dir = await getApplicationDocumentsDirectory();
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final file = File('${dir.path}/recorded_take_$timestamp.mp4');
-        await file.writeAsString('Simulated Video Take at $timestamp');
-        return file;
-      } catch (_) {
-        return null;
-      }
-    }
+    if (!isInitialized) return null;
 
     try {
       final cam.XFile xFile = await _controller!.stopVideoRecording();

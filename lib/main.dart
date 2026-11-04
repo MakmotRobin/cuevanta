@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/script_list_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/storage_service.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Allow rotation for prompter rigs (both portrait for phone selfie video & landscape for prompter rigs)
+  // Portrait for selfie video, landscape for glass prompter rigs.
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -15,33 +17,41 @@ void main() async {
     DeviceOrientation.landscapeRight,
   ]);
 
-  // Set system UI styling
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF0F172A),
+      systemNavigationBarColor: AppTheme.darkBackground,
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
 
-  // Initialize persistent storage
   final storageService = StorageService();
   await storageService.init();
+  final isFirstLaunch = await storageService.isFirstLaunch();
 
-  runApp(const TeleprompterApp());
+  runApp(CuevantaApp(showIntroduction: isFirstLaunch));
 }
 
-class TeleprompterApp extends StatelessWidget {
-  const TeleprompterApp({super.key});
+class CuevantaApp extends StatelessWidget {
+  /// Splash + onboarding before the home screen; true only on a fresh install.
+  final bool showIntroduction;
+
+  const CuevantaApp({super.key, required this.showIntroduction});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Teleprompter Studio',
+      title: 'Cuevanta',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: const ScriptListScreen(),
+      home: showIntroduction ? _introduction() : const ScriptListScreen(),
     );
   }
+
+  Widget _introduction() => SplashScreen(
+        nextScreenBuilder: (_) => OnboardingScreen(
+          homeScreenBuilder: (_) => const ScriptListScreen(),
+        ),
+      );
 }

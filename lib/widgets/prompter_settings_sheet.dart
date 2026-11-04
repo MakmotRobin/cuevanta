@@ -17,6 +17,8 @@ class PrompterSettingsSheet extends StatefulWidget {
 }
 
 class _PrompterSettingsSheetState extends State<PrompterSettingsSheet> {
+  static const double _maxHeightFraction = 0.85;
+
   late TeleprompterSettings _settings;
 
   @override
@@ -33,6 +35,9 @@ class _PrompterSettingsSheetState extends State<PrompterSettingsSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * _maxHeightFraction,
+      ),
       decoration: const BoxDecoration(
         color: Color(0xFF1E293B),
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -61,7 +66,7 @@ class _PrompterSettingsSheetState extends State<PrompterSettingsSheet> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Prompter Customization',
+                    'Prompter Settings',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,

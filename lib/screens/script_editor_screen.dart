@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/script.dart';
 import '../services/storage_service.dart';
+import '../theme/app_theme.dart';
 import 'studio_recording_screen.dart';
 import 'prompter_screen.dart';
 
@@ -14,14 +15,31 @@ class ScriptEditorScreen extends StatefulWidget {
 }
 
 class _ScriptEditorScreenState extends State<ScriptEditorScreen> {
+  static const String _untitled = 'Untitled Script';
+  static const List<String> _suggestedMarkers = [
+    'HOOK',
+    'INTRO',
+    'PROBLEM',
+    'SOLUTION',
+    'TIP 1',
+    'TIP 2',
+    'KEY TAKEAWAY',
+    'CALL TO ACTION',
+    'OUTRO',
+  ];
+
   final StorageService _storageService = StorageService();
 
   late TextEditingController _titleController;
   late TextEditingController _contentController;
   late String _scriptId;
   late DateTime _createdAt;
+  late final bool _isNewScript = widget.script == null;
   double? _customSpeed;
   double? _customFontSize;
+  String? _notes;
+  List<String> _backupOpenings = [];
+  bool _isClosing = false;
 
   @override
   void initState() {
@@ -34,145 +52,170 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen> {
       _createdAt = script.createdAt;
       _customSpeed = script.customSpeed;
       _customFontSize = script.customFontSize;
+      _notes = script.notes;
+      _backupOpenings = List.of(script.backupOpenings);
     } else {
       _scriptId = 'script_${DateTime.now().millisecondsSinceEpoch}';
-      _titleController = TextEditingController(text: 'Untitled Script');
+      _titleController = TextEditingController();
       _contentController = TextEditingController();
       _createdAt = DateTime.now();
     }
 
-    _contentController.addListener(() {
-      setState(() {});
-    });
+    _contentController.addListener(() => setState(() {}));
   }
 
   Script _buildCurrentScript() {
+    final title = _titleController.text.trim();
     return Script(
       id: _scriptId,
-      title: _titleController.text.trim().isEmpty
-          ? 'Untitled Script'
-          : _titleController.text.trim(),
+      title: title.isEmpty ? _untitled : title,
       content: _contentController.text,
       createdAt: _createdAt,
       updatedAt: DateTime.now(),
       customSpeed: _customSpeed,
       customFontSize: _customFontSize,
+      notes: _notes,
+      backupOpenings: _backupOpenings,
     );
   }
 
+  void _swapOpening(int backupIndex) {
+    final swapped = _buildCurrentScript().withOpeningSwapped(backupIndex);
+    setState(() => _backupOpenings = swapped.backupOpenings);
+    _contentController.text = swapped.content;
+  }
+
+  void _showBackupOpeningsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => _BackupOpeningsSheet(
+        currentOpening: _buildCurrentScript().openingLine ?? '',
+        backupOpenings: _backupOpenings,
+        onChosen: (index) {
+          Navigator.of(ctx).pop();
+          _swapOpening(index);
+        },
+      ),
+    );
+  }
+
+  bool get _isBlankNewScript =>
+      _isNewScript &&
+      _titleController.text.trim().isEmpty &&
+      _contentController.text.trim().isEmpty;
+
   Future<void> _saveScript() async {
+    if (_isBlankNewScript) return;
+    await _storageService.addOrUpdateScript(_buildCurrentScript());
+  }
+
+  /// Saves before leaving so the script list never reloads stale data.
+  Future<void> _saveAndClose() async {
+    if (_isClosing) return;
+    _isClosing = true;
+    final navigator = Navigator.of(context);
+    await _saveScript();
+    navigator.pop();
+  }
+
+  Future<void> _saveAndOpen(Widget Function(Script script) screenBuilder) async {
+    final navigator = Navigator.of(context);
     final script = _buildCurrentScript();
     await _storageService.addOrUpdateScript(script);
+    if (!mounted) return;
+    navigator.push(MaterialPageRoute(builder: (_) => screenBuilder(script)));
   }
 
   void _insertMarker(String markerTitle) {
     final text = _contentController.text;
     final selection = _contentController.selection;
-    final markerText = '\n[$markerTitle]\n';
-
-    final newText = selection.start >= 0
-        ? text.replaceRange(selection.start, selection.end, markerText)
-        : '$text$markerText';
+    final insertAt = selection.isValid ? selection.start : text.length;
+    final replaceEnd = selection.isValid ? selection.end : text.length;
+    final needsLeadingBreak = insertAt > 0 && text[insertAt - 1] != '\n';
+    final markerText = '${needsLeadingBreak ? '\n' : ''}[$markerTitle]\n';
 
     _contentController.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(
-        offset: (selection.start >= 0 ? selection.start : text.length) + markerText.length,
-      ),
+      text: text.replaceRange(insertAt, replaceEnd, markerText),
+      selection: TextSelection.collapsed(offset: insertAt + markerText.length),
     );
   }
 
-  void _showAddMarkerDialog() {
-    final suggestions = [
-      'HOOK',
-      'INTRO',
-      'PROBLEM',
-      'SOLUTION',
-      'TIP 1',
-      'TIP 2',
-      'KEY TAKEAWAY',
-      'CALL TO ACTION',
-      'OUTRO',
-    ];
+  void _insertMarkerAndClose(BuildContext sheetContext, String markerTitle) {
+    final cleaned = markerTitle.trim().toUpperCase();
+    if (cleaned.isEmpty) return;
+    Navigator.of(sheetContext).pop();
+    _insertMarker(cleaned);
+  }
 
+  void _showAddMarkerSheet() {
+    final customController = TextEditingController();
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E293B),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      isScrollControlled: true,
       builder: (ctx) {
-        final customController = TextEditingController();
         return Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Insert Section Marker',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+          padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Insert section marker',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Markers format as [TAG] in your script and allow quick navigation during prompting.',
-                style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: suggestions.map((tag) {
-                  return ActionChip(
-                    label: Text(tag),
-                    backgroundColor: const Color(0xFF0F172A),
-                    side: const BorderSide(color: Color(0xFF334155)),
-                    labelStyle: const TextStyle(
-                      color: Colors.amberAccent,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                    onPressed: () {
-                      Navigator.of(ctx).pop();
-                      _insertMarker(tag);
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: customController,
-                      decoration: const InputDecoration(
-                        hintText: 'Custom marker name...',
-                        isDense: true,
+                const SizedBox(height: 6),
+                const Text(
+                  'Markers appear as [TAG] in your script and let you jump between sections while prompting.',
+                  style: TextStyle(fontSize: 13, color: AppTheme.textMuted, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final tag in _suggestedMarkers)
+                      ActionChip(
+                        label: Text(tag),
+                        labelStyle: const TextStyle(
+                          color: Colors.amberAccent,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                        onPressed: () => _insertMarkerAndClose(ctx, tag),
                       ),
-                      textCapitalization: TextCapitalization.characters,
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: customController,
+                        textCapitalization: TextCapitalization.characters,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (value) => _insertMarkerAndClose(ctx, value),
+                        decoration: const InputDecoration(
+                          hintText: 'Custom marker name',
+                          isDense: true,
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () {
-                      if (customController.text.trim().isNotEmpty) {
-                        Navigator.of(ctx).pop();
-                        _insertMarker(customController.text.trim().toUpperCase());
-                      }
-                    },
-                    child: const Text('Insert'),
-                  ),
-                ],
-              ),
-            ],
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () => _insertMarkerAndClose(ctx, customController.text),
+                      child: const Text('Insert'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
-    );
+    ).whenComplete(customController.dispose);
   }
 
   @override
@@ -187,82 +230,60 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen> {
     final currentScript = _buildCurrentScript();
 
     return PopScope(
-      canPop: true,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        _saveScript();
+        if (!didPop) _saveAndClose();
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Edit Script'),
+          title: Text(_isNewScript ? 'New Script' : 'Edit Script'),
           actions: [
             IconButton(
               icon: const Icon(Icons.bookmark_add_outlined, color: Colors.amberAccent),
-              tooltip: 'Insert Marker',
-              onPressed: _showAddMarkerDialog,
+              tooltip: 'Insert marker',
+              onPressed: _showAddMarkerSheet,
             ),
             IconButton(
-              icon: const Icon(Icons.check, color: Color(0xFF10B981)),
+              icon: const Icon(Icons.check_rounded, color: AppTheme.accent),
               tooltip: 'Save',
-              onPressed: () async {
-                final messenger = ScaffoldMessenger.of(context);
-                final navigator = Navigator.of(context);
-                await _saveScript();
-                if (!mounted) return;
-                messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('Script saved!'),
-                    duration: Duration(seconds: 1),
-                  ),
-                );
-                navigator.pop();
-              },
+              onPressed: _saveAndClose,
             ),
           ],
         ),
         body: Column(
           children: [
-            // Stats bar (word count, reading time)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              color: const Color(0xFF1E293B),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: Row(
                 children: [
-                  const Icon(Icons.schedule, size: 16, color: Color(0xFF818CF8)),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Time: ${currentScript.formattedEstimatedTime()}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  _EditorStatChip(
+                    icon: Icons.schedule_rounded,
+                    label: currentScript.formattedEstimatedTime(),
+                    color: AppTheme.primaryLight,
                   ),
-                  const Spacer(),
-                  const Icon(Icons.notes, size: 16, color: Color(0xFF94A3B8)),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${currentScript.wordCount} words  •  ${currentScript.markers.length} markers',
-                    style: const TextStyle(
-                      color: Color(0xFF94A3B8),
-                      fontSize: 13,
-                    ),
+                  const SizedBox(width: 8),
+                  _EditorStatChip(
+                    icon: Icons.notes_rounded,
+                    label: '${currentScript.wordCount} words',
+                  ),
+                  const SizedBox(width: 8),
+                  _EditorStatChip(
+                    icon: Icons.bookmark_outline_rounded,
+                    label: '${currentScript.markers.length} markers',
                   ),
                 ],
               ),
             ),
-
-            // Title input
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: TextField(
                 controller: _titleController,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+                autofocus: _isNewScript,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.next,
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                 decoration: const InputDecoration(
-                  hintText: 'Script Title...',
+                  hintText: 'Script title',
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
@@ -271,10 +292,13 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen> {
                 ),
               ),
             ),
-
-            const Divider(color: Color(0xFF2E3E55), height: 1),
-
-            // Content text area
+            if (_backupOpenings.isNotEmpty)
+              _OpeningBar(
+                openingLine: currentScript.openingLine ?? '',
+                alternativeCount: _backupOpenings.length,
+                onSwap: _showBackupOpeningsSheet,
+              ),
+            const Divider(),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -282,13 +306,12 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen> {
                   controller: _contentController,
                   maxLines: null,
                   expands: true,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    height: 1.6,
-                    color: Color(0xFFE2E8F0),
-                  ),
+                  textAlignVertical: TextAlignVertical.top,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: const TextStyle(fontSize: 16, height: 1.6, color: AppTheme.textBody),
                   decoration: const InputDecoration(
-                    hintText: 'Type or paste your script here...\n\nTip: You can use [INTRO], [HOOK], or [KEY POINT] to create section markers!',
+                    hintText:
+                        'Type or paste your script here…\n\nTip: lines like [INTRO], [HOOK] or [KEY POINT] become section markers you can jump to.',
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
@@ -297,68 +320,167 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen> {
                 ),
               ),
             ),
+            _buildLaunchBar(),
+          ],
+        ),
+      ),
+    );
+  }
 
-            // Bottom Action Bar (Launch Studio Video Recording / Launch Prompter)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: const BoxDecoration(
-                color: Color(0xFF1E293B),
-                border: Border(
-                  top: BorderSide(color: Color(0xFF2E3E55)),
-                ),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Row(
-                  children: [
-                    // Glass Prompter Button
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.play_circle_outline),
-                        label: const Text('Prompter Only'),
-                        onPressed: () async {
-                          final navigator = Navigator.of(context);
-                          final currentScript = _buildCurrentScript();
-                          await _saveScript();
-                          if (!mounted) return;
-                          navigator.push(
-                            MaterialPageRoute(
-                              builder: (_) => PrompterScreen(
-                                script: currentScript,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Video Studio Recording Button
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.videocam),
-                        label: const Text('Record Studio'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFEF4444),
-                        ),
-                        onPressed: () async {
-                          final navigator = Navigator.of(context);
-                          final currentScript = _buildCurrentScript();
-                          await _saveScript();
-                          if (!mounted) return;
-                          navigator.push(
-                            MaterialPageRoute(
-                              builder: (_) => StudioRecordingScreen(
-                                script: currentScript,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
+  Widget _buildLaunchBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: const BoxDecoration(
+        color: AppTheme.cardDark,
+        border: Border(top: BorderSide(color: AppTheme.border)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.slideshow_rounded),
+                label: const Text('Prompt'),
+                onPressed: () => _saveAndOpen((script) => PrompterScreen(script: script)),
               ),
             ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.videocam_rounded),
+                label: const Text('Record'),
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.recordingRed),
+                onPressed: () =>
+                    _saveAndOpen((script) => StudioRecordingScreen(script: script)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EditorStatChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _EditorStatChip({
+    required this.icon,
+    required this.label,
+    this.color = AppTheme.textMuted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 5),
+          Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shows the current first line and offers the imported backup openings.
+class _OpeningBar extends StatelessWidget {
+  final String openingLine;
+  final int alternativeCount;
+  final VoidCallback onSwap;
+
+  const _OpeningBar({
+    required this.openingLine,
+    required this.alternativeCount,
+    required this.onSwap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: Colors.amber.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+        border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.bolt_rounded, color: Colors.amberAccent, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              openingLine,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, color: AppTheme.textBody, height: 1.35),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: onSwap,
+            icon: const Icon(Icons.swap_vert_rounded, size: 18),
+            label: Text('$alternativeCount hooks'),
+            style: TextButton.styleFrom(foregroundColor: Colors.amberAccent),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BackupOpeningsSheet extends StatelessWidget {
+  final String currentOpening;
+  final List<String> backupOpenings;
+  final ValueChanged<int> onChosen;
+
+  const _BackupOpeningsSheet({
+    required this.currentOpening,
+    required this.backupOpenings,
+    required this.onChosen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Swap the opening line', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            const Text(
+              'The line you replace moves into this list, so you can always swap back.',
+              style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+            ),
+            const SizedBox(height: 14),
+            const Text('NOW', style: TextStyle(fontSize: 11, color: AppTheme.textSubtle, letterSpacing: 1)),
+            const SizedBox(height: 4),
+            Text(currentOpening, style: const TextStyle(fontWeight: FontWeight.w600, height: 1.4)),
+            const SizedBox(height: 14),
+            for (var i = 0; i < backupOpenings.length; i++)
+              Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: const Icon(Icons.bolt_rounded, color: Colors.amberAccent),
+                  title: Text(backupOpenings[i], style: const TextStyle(fontSize: 14, height: 1.4)),
+                  trailing: const Icon(Icons.swap_vert_rounded, color: AppTheme.textMuted),
+                  onTap: () => onChosen(i),
+                ),
+              ),
           ],
         ),
       ),

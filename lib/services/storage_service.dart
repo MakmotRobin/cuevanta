@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/script.dart';
 import '../models/teleprompter_settings.dart';
@@ -7,6 +8,7 @@ class StorageService {
   static const String _keyScripts = 'teleprompter_scripts_v1';
   static const String _keySettings = 'teleprompter_settings_v1';
   static const String _keyRecordings = 'teleprompter_recordings_v1';
+  static const String _keyOnboardingComplete = 'cuevanta_onboarding_complete_v1';
 
   static final StorageService _instance = StorageService._internal();
   factory StorageService() => _instance;
@@ -18,11 +20,32 @@ class StorageService {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
-  /// Get all scripts, seeding defaults if empty
+  /// Drops the cached preferences so tests can start from fresh mock values.
+  @visibleForTesting
+  Future<void> resetForTesting() async {
+    _prefs = null;
+    await init();
+  }
+
+  /// True only on a fresh install: onboarding not finished and no saved scripts yet
+  /// (so people updating from an earlier build skip it).
+  Future<bool> isFirstLaunch() async {
+    await init();
+    final finishedOnboarding = _prefs?.getBool(_keyOnboardingComplete) ?? false;
+    final hasExistingData = _prefs?.containsKey(_keyScripts) ?? false;
+    return !finishedOnboarding && !hasExistingData;
+  }
+
+  Future<void> markOnboardingComplete() async {
+    await init();
+    await _prefs?.setBool(_keyOnboardingComplete, true);
+  }
+
+  /// Get all scripts, seeding the sample scripts on first launch only.
   Future<List<Script>> getScripts() async {
     await init();
     final rawList = _prefs?.getStringList(_keyScripts);
-    if (rawList == null || rawList.isEmpty) {
+    if (rawList == null) {
       final defaults = _getDefaultScripts();
       await saveScripts(defaults);
       return defaults;

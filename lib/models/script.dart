@@ -11,6 +11,9 @@ class Script {
   double? customFontSize; // optional script-specific font size
   String? notes;
 
+  /// Alternative first lines (e.g. from an imported READ file) that can be swapped in.
+  List<String> backupOpenings;
+
   Script({
     required this.id,
     required this.title,
@@ -20,7 +23,8 @@ class Script {
     this.customSpeed,
     this.customFontSize,
     this.notes,
-  });
+    List<String>? backupOpenings,
+  }) : backupOpenings = backupOpenings ?? [];
 
   /// Approximate word count
   int get wordCount {
@@ -46,6 +50,36 @@ class Script {
     return '${minutes}m ${remainingSeconds.toString().padLeft(2, '0')}s';
   }
 
+  /// The first spoken line: the first non-blank line that isn't a [MARKER].
+  String? get openingLine {
+    final index = _openingLineIndex(content.split('\n'));
+    return index == null ? null : content.split('\n')[index].trim();
+  }
+
+  /// Puts backup opening [backupIndex] in place of the current opening line,
+  /// and stores the replaced line in its slot so the swap can be undone.
+  Script withOpeningSwapped(int backupIndex) {
+    final lines = content.split('\n');
+    final openingIndex = _openingLineIndex(lines);
+    if (openingIndex == null || backupIndex < 0 || backupIndex >= backupOpenings.length) {
+      return copyWith();
+    }
+
+    final swappedBackups = List.of(backupOpenings);
+    swappedBackups[backupIndex] = lines[openingIndex].trim();
+    lines[openingIndex] = backupOpenings[backupIndex];
+    return copyWith(content: lines.join('\n'), backupOpenings: swappedBackups);
+  }
+
+  static int? _openingLineIndex(List<String> lines) {
+    for (var i = 0; i < lines.length; i++) {
+      final trimmed = lines[i].trim();
+      final isMarker = trimmed.startsWith('[') && trimmed.endsWith(']');
+      if (trimmed.isNotEmpty && !isMarker) return i;
+    }
+    return null;
+  }
+
   /// Extract bookmarks / cue tags formatted like [INTRO], [POINT 1], etc.
   List<ScriptMarker> get markers {
     final regex = RegExp(r'\[([A-Za-z0-9 _\-:]{2,30})\]');
@@ -69,6 +103,7 @@ class Script {
       'customSpeed': customSpeed,
       'customFontSize': customFontSize,
       'notes': notes,
+      'backupOpenings': backupOpenings,
     };
   }
 
@@ -82,6 +117,7 @@ class Script {
       customSpeed: (map['customSpeed'] as num?)?.toDouble(),
       customFontSize: (map['customFontSize'] as num?)?.toDouble(),
       notes: map['notes'],
+      backupOpenings: (map['backupOpenings'] as List?)?.whereType<String>().toList(),
     );
   }
 
@@ -98,6 +134,7 @@ class Script {
     double? customSpeed,
     double? customFontSize,
     String? notes,
+    List<String>? backupOpenings,
   }) {
     return Script(
       id: id ?? this.id,
@@ -108,6 +145,7 @@ class Script {
       customSpeed: customSpeed ?? this.customSpeed,
       customFontSize: customFontSize ?? this.customFontSize,
       notes: notes ?? this.notes,
+      backupOpenings: backupOpenings ?? List.of(this.backupOpenings),
     );
   }
 }

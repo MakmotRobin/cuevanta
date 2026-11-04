@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/recorded_video.dart';
 import '../services/storage_service.dart';
+import 'video_player_screen.dart';
 
 class RecordingsScreen extends StatefulWidget {
   const RecordingsScreen({super.key});
@@ -29,6 +31,30 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         _recordings = list;
         _isLoading = false;
       });
+    }
+  }
+
+  void _playVideo(RecordedVideo video) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => VideoPlayerScreen(video: video),
+      ),
+    );
+  }
+
+  void _shareVideo(RecordedVideo video) {
+    final file = File(video.filePath);
+    if (file.existsSync()) {
+      SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(video.filePath)],
+          subject: 'Recorded take from ${video.scriptTitle}',
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('File not found to share.')),
+      );
     }
   }
 
@@ -90,17 +116,21 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                           horizontal: 16,
                           vertical: 8,
                         ),
-                        leading: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEF4444).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.play_circle_fill,
-                            color: Color(0xFFEF4444),
-                            size: 28,
+                        onTap: () => _playVideo(video),
+                        leading: GestureDetector(
+                          onTap: () => _playVideo(video),
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.play_circle_fill,
+                              color: Color(0xFFEF4444),
+                              size: 28,
+                            ),
                           ),
                         ),
                         title: Text(
@@ -132,10 +162,20 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                             ),
                           ],
                         ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.white60),
-                          tooltip: 'Delete Take',
-                          onPressed: () => _deleteRecording(video),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.share_outlined, color: Colors.white70, size: 20),
+                              tooltip: 'Share / Export Take',
+                              onPressed: () => _shareVideo(video),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.white60, size: 20),
+                              tooltip: 'Delete Take',
+                              onPressed: () => _deleteRecording(video),
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -151,8 +191,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E293B),
+            decoration: const BoxDecoration(
+              color: Color(0xFF1E293B),
               shape: BoxShape.circle,
             ),
             child: const Icon(
