@@ -262,7 +262,28 @@ class _PrompterSettingsSheetState extends State<PrompterSettingsSheet> {
       ];
 
   List<Widget> _buildCountdownSection() => [
-        const _SectionTitle('Countdown'),
+        const _SectionTitle('Countdown & takes'),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Record when the countdown ends', style: TextStyle(fontSize: 15)),
+          subtitle: const Text(
+            'Opening the studio counts down, then starts recording.',
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          ),
+          value: _settings.autoRecordVideo,
+          onChanged: (value) => _update((s) => s.autoRecordVideo = value),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Stop at the end of the script', style: TextStyle(fontSize: 15)),
+          subtitle: const Text(
+            'Ends the take a moment after your last line passes the guide.',
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          ),
+          value: _settings.autoStopAtEnd,
+          onChanged: (value) => _update((s) => s.autoStopAtEnd = value),
+        ),
+        const SizedBox(height: 8),
         _SegmentedChoice<int>(
           selected: _settings.countdownDuration,
           options: {

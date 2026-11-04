@@ -43,6 +43,7 @@ class TeleprompterSettings {
   double overlayOpacity; // 0.0 (transparent) to 0.95 (opaque) in camera mode
   double textHorizontalMargin; // Horizontal padding in % (e.g., 0.1 = 10% on each side)
   bool autoRecordVideo; // Trigger recording when countdown completes
+  bool autoStopAtEnd; // Stop the take once the last line has been read
   ScriptBoxArea boxArea;
   bool preferFrontCamera;
   bool enableHapticFeedback;
@@ -66,6 +67,7 @@ class TeleprompterSettings {
     this.overlayOpacity = 0.65,
     this.textHorizontalMargin = 24.0,
     this.autoRecordVideo = true,
+    this.autoStopAtEnd = true,
     this.boxArea = ScriptBoxArea.nearCameraTop,
     this.preferFrontCamera = true,
     this.enableHapticFeedback = true,
@@ -91,6 +93,7 @@ class TeleprompterSettings {
       'overlayOpacity': overlayOpacity,
       'textHorizontalMargin': textHorizontalMargin,
       'autoRecordVideo': autoRecordVideo,
+      'autoStopAtEnd': autoStopAtEnd,
       'boxArea': boxArea.index,
       'preferFrontCamera': preferFrontCamera,
       'enableHapticFeedback': enableHapticFeedback,
@@ -119,6 +122,7 @@ class TeleprompterSettings {
       overlayOpacity: (map['overlayOpacity'] as num?)?.toDouble() ?? 0.65,
       textHorizontalMargin: (map['textHorizontalMargin'] as num?)?.toDouble() ?? 24.0,
       autoRecordVideo: map['autoRecordVideo'] as bool? ?? true,
+      autoStopAtEnd: map['autoStopAtEnd'] as bool? ?? true,
       boxArea: ScriptBoxArea.values[
           (map['boxArea'] as int? ?? ScriptBoxArea.nearCameraTop.index).clamp(0, ScriptBoxArea.values.length - 1)],
       preferFrontCamera: map['preferFrontCamera'] as bool? ?? true,
@@ -151,6 +155,7 @@ class TeleprompterSettings {
     double? overlayOpacity,
     double? textHorizontalMargin,
     bool? autoRecordVideo,
+    bool? autoStopAtEnd,
     ScriptBoxArea? boxArea,
     bool? preferFrontCamera,
     bool? enableHapticFeedback,
@@ -174,6 +179,7 @@ class TeleprompterSettings {
       overlayOpacity: overlayOpacity ?? this.overlayOpacity,
       textHorizontalMargin: textHorizontalMargin ?? this.textHorizontalMargin,
       autoRecordVideo: autoRecordVideo ?? this.autoRecordVideo,
+      autoStopAtEnd: autoStopAtEnd ?? this.autoStopAtEnd,
       boxArea: boxArea ?? this.boxArea,
       preferFrontCamera: preferFrontCamera ?? this.preferFrontCamera,
       enableHapticFeedback: enableHapticFeedback ?? this.enableHapticFeedback,

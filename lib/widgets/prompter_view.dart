@@ -14,8 +14,14 @@ class PrompterView extends StatefulWidget {
   final Script script;
   final TeleprompterSettings settings;
   final bool isTransparentOverlay;
-  final VoidCallback? onFinished;
+
+  /// Called once when the last spoken line has passed the reading guide
+  /// (or, when following the voice, its last word has been heard).
+  final VoidCallback? onScriptEnd;
   final ValueChanged<bool>? onPlayStateChanged;
+
+  /// Line under the countdown number.
+  final String countdownCaption;
 
   /// Called once the pre-roll countdown ends (immediately when the countdown is off).
   final VoidCallback? onCountdownFinished;
@@ -29,8 +35,9 @@ class PrompterView extends StatefulWidget {
     required this.script,
     required this.settings,
     this.isTransparentOverlay = false,
-    this.onFinished,
+    this.onScriptEnd,
     this.onPlayStateChanged,
+    this.countdownCaption = 'Get ready…  tap to skip',
     this.onCountdownFinished,
     this.onControllerReady,
     this.voiceFollow,
@@ -45,6 +52,9 @@ class PrompterViewController {
   final VoidCallback pause;
   final VoidCallback togglePlayPause;
   final VoidCallback restart;
+
+  /// Runs the configured countdown (or starts straight away when it's off), then plays.
+  final VoidCallback startCountdown;
   final ValueChanged<double> setSpeed;
   final ValueChanged<double> setFontSize;
   final Function(int markerIndex) jumpToMarker;
@@ -59,6 +69,7 @@ class PrompterViewController {
     required this.pause,
     required this.togglePlayPause,
     required this.restart,
+    required this.startCountdown,
     required this.setSpeed,
     required this.setFontSize,
     required this.jumpToMarker,
@@ -83,6 +94,7 @@ class _PrompterViewState extends State<PrompterView>
   Duration _lastElapsed = Duration.zero;
 
   bool _isPlaying = false;
+  bool _hasReportedScriptEnd = false;
   int _countdownNumber = 0;
   Timer? _countdownTimer;
 
@@ -91,6 +103,7 @@ class _PrompterViewState extends State<PrompterView>
   double _topSpacerHeight = 0;
 
   late final List<String> _paragraphs;
+  late final int _lastSpokenParagraph;
   late final List<int> _paragraphStartOffsets;
   late final List<GlobalKey> _paragraphKeys;
   final GlobalKey _contentColumnKey = GlobalKey();
@@ -112,6 +125,7 @@ class _PrompterViewState extends State<PrompterView>
         pause: _pauseScrolling,
         togglePlayPause: _togglePlayPause,
         restart: _restartToTop,
+        startCountdown: _beginCountdown,
         setSpeed: _updateSpeed,
         setFontSize: (size) => setState(() => _fontSize = size),
         jumpToMarker: _jumpToMarker,
@@ -121,13 +135,15 @@ class _PrompterViewState extends State<PrompterView>
       ),
     );
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.settings.countdownDuration > 0) {
-        _startCountdown();
-      } else {
-        _finishCountdown();
-      }
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _beginCountdown());
+  }
+
+  void _beginCountdown() {
+    if (widget.settings.countdownDuration > 0) {
+      _startCountdown();
+    } else {
+      _finishCountdown();
+    }
   }
 
   void _indexParagraphs() {
@@ -139,6 +155,13 @@ class _PrompterViewState extends State<PrompterView>
       offset += paragraph.length + 1; // +1 for the newline removed by split
     }
     _paragraphKeys = List.generate(_paragraphs.length, (_) => GlobalKey());
+    _lastSpokenParagraph = _paragraphs.lastIndexWhere(_isSpokenLine);
+  }
+
+  static bool _isSpokenLine(String line) {
+    final trimmed = line.trim();
+    final isMarker = trimmed.startsWith('[') && trimmed.endsWith(']');
+    return trimmed.isNotEmpty && !isMarker;
   }
 
   void _onTick(Duration elapsed) {
@@ -159,19 +182,35 @@ class _PrompterViewState extends State<PrompterView>
 
     if (_isFollowingVoice) {
       _easeTowardSpokenLine(delta);
-      return;
+    } else {
+      _scrollAtSpeed(delta);
     }
+    _reportScriptEndOnce();
+  }
 
+  void _scrollAtSpeed(double deltaSeconds) {
     final maxScroll = _scrollController.position.maxScrollExtent;
-    final newOffset = _scrollController.offset + (_speed * delta);
-
+    final newOffset = _scrollController.offset + (_speed * deltaSeconds);
     if (newOffset >= maxScroll) {
       _scrollController.jumpTo(maxScroll);
       _pauseScrolling();
-      widget.onFinished?.call();
     } else {
       _scrollController.jumpTo(newOffset);
     }
+  }
+
+  void _reportScriptEndOnce() {
+    if (_hasReportedScriptEnd || !_hasReachedScriptEnd) return;
+    _hasReportedScriptEnd = true;
+    widget.onScriptEnd?.call();
+  }
+
+  bool get _hasReachedScriptEnd {
+    if (_isFollowingVoice) return widget.voiceFollow!.isAtEnd;
+    if (_lastSpokenParagraph < 0) return false;
+    final lastLineBottom = _paragraphBottomY(_lastSpokenParagraph);
+    if (lastLineBottom == null) return false;
+    return _scrollController.offset + _topSpacerHeight >= lastLineBottom;
   }
 
   bool get _isFollowingVoice => widget.voiceFollow?.isFollowing ?? false;
@@ -281,6 +320,7 @@ class _PrompterViewState extends State<PrompterView>
       _scrollController.jumpTo(0.0);
     }
     _lastElapsed = Duration.zero;
+    _hasReportedScriptEnd = false;
     widget.voiceFollow?.restartFromTop();
   }
 
@@ -304,6 +344,7 @@ class _PrompterViewState extends State<PrompterView>
     );
     _scrollController.jumpTo(target);
     _lastElapsed = Duration.zero;
+    _hasReportedScriptEnd = false;
   }
 
   int _paragraphAtGuide() {
@@ -407,7 +448,8 @@ class _PrompterViewState extends State<PrompterView>
                       right: 0,
                       child: const IgnorePointer(child: Center(child: _PausedBadge())),
                     ),
-                  if (_countdownNumber > 0) _CountdownOverlay(number: _countdownNumber),
+                  if (_countdownNumber > 0)
+                    _CountdownOverlay(number: _countdownNumber, caption: widget.countdownCaption),
                 ],
               );
             },
@@ -557,8 +599,9 @@ class _PausedBadge extends StatelessWidget {
 
 class _CountdownOverlay extends StatelessWidget {
   final int number;
+  final String caption;
 
-  const _CountdownOverlay({required this.number});
+  const _CountdownOverlay({required this.number, required this.caption});
 
   @override
   Widget build(BuildContext context) {
@@ -591,8 +634,8 @@ class _CountdownOverlay extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Get ready…  tap to skip',
+              Text(
+                caption,
                 style: TextStyle(
                   fontSize: 18,
                   color: Colors.white,

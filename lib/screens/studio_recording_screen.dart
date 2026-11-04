@@ -45,6 +45,13 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   DateTime? _takeStartedAt;
   Timer? _recordTimer;
 
+  /// Lets the last words land before the take stops at the end of the script.
+  static const Duration _pauseAfterLastLine = Duration(milliseconds: 1500);
+  Timer? _endOfScriptTimer;
+
+  /// True while a countdown is running that should start a take when it ends.
+  bool _recordWhenCountdownEnds = false;
+
   PrompterViewController? _prompterController;
   bool _isPrompterPlaying = false;
   double _currentSpeed = 38.0;
@@ -65,6 +72,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     _settings = await _storageService.getSettings();
     _currentSpeed = widget.script.customSpeed ?? _settings.scrollSpeed;
     _currentFontSize = widget.script.customFontSize ?? _settings.fontSize;
+    _recordWhenCountdownEnds = _settings.autoRecordVideo;
 
     await _openCamera();
     prepareVoiceFollow(widget.script, _settings);
@@ -116,11 +124,27 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   int currentParagraphAtGuide() => _prompterController?.paragraphAtGuide() ?? 0;
 
   void _onCountdownFinished() {
-    if (_settings.autoRecordVideo) {
+    if (_recordWhenCountdownEnds) {
+      setState(() => _recordWhenCountdownEnds = false);
       _startRecordingVideo();
     } else {
       startVoiceFollow(_settings);
     }
+  }
+
+  /// Counts down (or starts at once when the countdown is off), then records.
+  void _countDownToRecording() {
+    setState(() => _recordWhenCountdownEnds = true);
+    _prompterController?.pause();
+    _prompterController?.startCountdown();
+  }
+
+  void _onScriptEnd() {
+    if (!_isRecording || !_settings.autoStopAtEnd) return;
+    _endOfScriptTimer?.cancel();
+    _endOfScriptTimer = Timer(_pauseAfterLastLine, () {
+      if (mounted && _isRecording) _stopRecordingAndShowSummary();
+    });
   }
 
   /// Voice-follow gives up the microphone first: on Android the camera's
@@ -168,6 +192,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
   Future<RecordedVideo?> _finishTake() async {
     if (!_isRecording) return null;
     _recordTimer?.cancel();
+    _endOfScriptTimer?.cancel();
     setState(() {
       _isRecording = false;
       _isSavingTake = true;
@@ -233,8 +258,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
       await _stopRecordingAndShowSummary();
       return;
     }
-    await _startRecordingVideo();
-    if (_isRecording && !_isPrompterPlaying) _prompterController?.play();
+    _countDownToRecording();
   }
 
   Future<void> _switchCamera() async {
@@ -244,6 +268,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
 
   void _recordAnotherTake() {
     _prompterController?.restart();
+    _countDownToRecording();
   }
 
   void _showTakeCompletedDialog(RecordedVideo video) {
@@ -384,6 +409,7 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
     WidgetsBinding.instance.removeObserver(this);
     SystemChrome.setPreferredOrientations(allAppOrientations);
     _recordTimer?.cancel();
+    _endOfScriptTimer?.cancel();
     disposeVoiceFollow();
     _cameraService.dispose();
     super.dispose();
@@ -428,9 +454,10 @@ class _StudioRecordingScreenState extends State<StudioRecordingScreen>
                       setState(() => _isPrompterPlaying = playing),
                   onCountdownFinished: _onCountdownFinished,
                   voiceFollow: voiceFollow,
-                  onFinished: () {
-                    if (_isRecording) _stopRecordingAndShowSummary();
-                  },
+                  onScriptEnd: _onScriptEnd,
+                  countdownCaption: _recordWhenCountdownEnds
+                      ? 'Recording starts…  tap to skip'
+                      : 'Get ready…  tap to skip',
                 ),
               ),
             ),
