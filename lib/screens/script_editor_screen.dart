@@ -180,7 +180,7 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen> {
                       ActionChip(
                         label: Text(tag),
                         labelStyle: const TextStyle(
-                          color: Colors.amberAccent,
+                          color: AppTheme.goldLight,
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                         ),
@@ -239,7 +239,7 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen> {
           title: Text(_isNewScript ? 'New Script' : 'Edit Script'),
           actions: [
             IconButton(
-              icon: const Icon(Icons.bookmark_add_outlined, color: Colors.amberAccent),
+              icon: const Icon(Icons.bookmark_add_outlined, color: AppTheme.goldLight),
               tooltip: 'Insert marker',
               onPressed: _showAddMarkerSheet,
             ),
@@ -281,7 +281,8 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen> {
                 autofocus: _isNewScript,
                 textCapitalization: TextCapitalization.sentences,
                 textInputAction: TextInputAction.next,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                maxLines: null,
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w300, height: 1.3),
                 decoration: const InputDecoration(
                   hintText: 'Script title',
                   border: InputBorder.none,
@@ -316,6 +317,7 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen> {
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                     filled: false,
+                    contentPadding: EdgeInsets.symmetric(vertical: 16),
                   ),
                 ),
               ),
@@ -350,7 +352,10 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen> {
               child: ElevatedButton.icon(
                 icon: const Icon(Icons.videocam_rounded),
                 label: const Text('Record'),
-                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.recordingRed),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.recordingRed,
+                  foregroundColor: AppTheme.textPrimary,
+                ),
                 onPressed: () =>
                     _saveAndOpen((script) => StudioRecordingScreen(script: script)),
               ),
@@ -411,13 +416,13 @@ class _OpeningBar extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
       decoration: BoxDecoration(
-        color: Colors.amber.withValues(alpha: 0.08),
+        color: AppTheme.gold.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-        border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+        border: Border.all(color: AppTheme.gold.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.bolt_rounded, color: Colors.amberAccent, size: 18),
+          const Icon(Icons.bolt_rounded, color: AppTheme.goldLight, size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -431,7 +436,7 @@ class _OpeningBar extends StatelessWidget {
             onPressed: onSwap,
             icon: const Icon(Icons.swap_vert_rounded, size: 18),
             label: Text('$alternativeCount hooks'),
-            style: TextButton.styleFrom(foregroundColor: Colors.amberAccent),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.goldLight),
           ),
         ],
       ),
@@ -475,7 +480,7 @@ class _BackupOpeningsSheet extends StatelessWidget {
               Card(
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
-                  leading: const Icon(Icons.bolt_rounded, color: Colors.amberAccent),
+                  leading: const Icon(Icons.bolt_rounded, color: AppTheme.goldLight),
                   title: Text(backupOpenings[i], style: const TextStyle(fontSize: 14, height: 1.4)),
                   trailing: const Icon(Icons.swap_vert_rounded, color: AppTheme.textMuted),
                   onTap: () => onChosen(i),

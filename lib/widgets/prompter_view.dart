@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../models/script.dart';
 import '../models/teleprompter_settings.dart';
 import 'reading_guide_painter.dart';
+import '../theme/app_theme.dart';
 
 class PrompterView extends StatefulWidget {
   final Script script;
@@ -426,9 +427,9 @@ class _PrompterViewState extends State<PrompterView>
       margin: const EdgeInsets.symmetric(vertical: 14),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.amber.withValues(alpha: 0.2),
+        color: AppTheme.gold.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.amber.withValues(alpha: 0.7), width: 1.5),
+        border: Border.all(color: AppTheme.gold.withValues(alpha: 0.7), width: 1.5),
       ),
       child: Text(
         markerText,
@@ -436,7 +437,7 @@ class _PrompterViewState extends State<PrompterView>
         style: TextStyle(
           fontSize: _fontSize * 0.6,
           fontWeight: FontWeight.w800,
-          color: Colors.amberAccent,
+          color: AppTheme.goldLight,
           letterSpacing: 1.2,
         ),
       ),
@@ -454,17 +455,17 @@ class _PausedBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.amber.withValues(alpha: 0.8), width: 1.2),
+        border: Border.all(color: AppTheme.gold.withValues(alpha: 0.8), width: 1.2),
       ),
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.pause, size: 14, color: Colors.amber),
+          Icon(Icons.pause, size: 14, color: AppTheme.gold),
           SizedBox(width: 6),
           Text(
             'PAUSED · TAP TO RESUME',
             style: TextStyle(
-              color: Colors.amber,
+              color: AppTheme.gold,
               fontSize: 11,
               fontWeight: FontWeight.bold,
               letterSpacing: 1.0,
@@ -504,7 +505,7 @@ class _CountdownOverlay extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 108,
                     fontWeight: FontWeight.w900,
-                    color: Colors.amber,
+                    color: AppTheme.gold,
                     shadows: [
                       Shadow(blurRadius: 24, color: Colors.black, offset: Offset(0, 4)),
                     ],

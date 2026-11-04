@@ -120,7 +120,7 @@ class PrompterHudControls extends StatelessWidget {
         _HudIconButton(
           icon: Icons.flip_rounded,
           tooltip: settings.mirrorHorizontal ? 'Mirror off' : 'Mirror for glass rig',
-          color: settings.mirrorHorizontal ? Colors.amber : Colors.white70,
+          color: settings.mirrorHorizontal ? AppTheme.gold : AppTheme.textBody,
           onTap: onToggleMirror,
         ),
         _HudIconButton(
@@ -135,14 +135,14 @@ class PrompterHudControls extends StatelessWidget {
   Widget _buildSectionMenu() {
     return PopupMenuButton<int>(
       tooltip: 'Jump to section',
-      icon: const Icon(Icons.bookmarks_outlined, color: Colors.amberAccent, size: 22),
+      icon: const Icon(Icons.bookmarks_outlined, color: AppTheme.goldLight, size: 22),
       itemBuilder: (context) => [
         for (final marker in script.markers)
           PopupMenuItem<int>(
             value: marker.index,
             child: Row(
               children: [
-                const Icon(Icons.label_important_rounded, color: Colors.amberAccent, size: 16),
+                const Icon(Icons.label_important_rounded, color: AppTheme.goldLight, size: 16),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -167,9 +167,7 @@ class _PlayPauseButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = isPlaying
-        ? const [Color(0xFFF59E0B), Color(0xFFD97706)]
-        : const [Color(0xFF10B981), Color(0xFF059669)];
+    const colors = [AppTheme.goldLight, AppTheme.goldDeep];
 
     return Tooltip(
       message: isPlaying ? 'Pause' : 'Play',
@@ -196,7 +194,7 @@ class _PlayPauseButton extends StatelessWidget {
           ),
           child: Icon(
             isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            color: Colors.white,
+            color: AppTheme.ink,
             size: 34,
           ),
         ),
@@ -247,8 +245,8 @@ class _StepperPill extends StatelessWidget {
                   value,
                   style: const TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
                     fontFeatures: [FontFeature.tabularFigures()],
                   ),
                 ),
@@ -282,7 +280,7 @@ class _HudIconButton extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onTap,
-    this.color = Colors.white70,
+    this.color = AppTheme.textBody,
     this.size = 22,
   });
 
